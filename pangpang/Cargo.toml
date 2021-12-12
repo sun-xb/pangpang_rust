@@ -1,0 +1,13 @@
+[package]
+name = "pangpang"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = "1.14.0"
+async-trait = "0.1.52"
+thrussh = "0.33.5"
+thrussh-keys = "0.21.0"
+alacritty_terminal = "0.15.0"
