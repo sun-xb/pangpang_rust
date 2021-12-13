@@ -5,13 +5,13 @@ mod terminal;
 use eframe::{epi, egui::{self, FontDefinitions, FontFamily}};
 
 struct PangPang {
-    rx: pangpang::PpMsgSender,
+    tx: pangpang::PpMsgSender,
 }
 
 impl PangPang {
     pub fn new() -> Self {
         Self {
-            rx: pangpang::run(),
+            tx: pangpang::run(),
         }
     }
 }
@@ -23,9 +23,10 @@ impl epi::App for PangPang {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
                     if ui.button("New").clicked() {
-                        self.rx.blocking_send(pangpang::PangPangMessage::Hello).unwrap();
+                        self.tx.blocking_send(pangpang::PpMessage::Hello).unwrap();
                     } else if ui.button("Open").clicked() {
-
+                        let size = pangpang::SizeInfo::new(120.0, 30.0, 1.0, 1.0, 0., 0., false);
+                        self.tx.blocking_send(pangpang::PpMessage::OpenShell(size)).unwrap();
                     } else if ui.button("Quit").clicked() {
                         frame.quit();
                     }
@@ -63,7 +64,7 @@ impl epi::App for PangPang {
     }
 
     fn name(&self) -> &str {
-        "pangpang shell"
+        "pangpang app"
     }
 
     fn setup(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>, _storage: Option<&dyn epi::Storage>) {

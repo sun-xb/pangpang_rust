@@ -7,7 +7,7 @@ mod ssh;
 
 use std::{collections::HashMap, sync::{Arc, Weak}};
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt};
 
 
 //re-export
@@ -28,10 +28,11 @@ pub trait PpPty {
 
 
 #[derive(Debug)]
-pub enum PangPangMessage {
+pub enum PpMessage {
     Hello,
+    OpenShell(SizeInfo)
 }
-pub type PpMsgSender = tokio::sync::mpsc::Sender<PangPangMessage>;
+pub type PpMsgSender = tokio::sync::mpsc::Sender<PpMessage>;
 
 pub enum Profile {
     SSH(ssh::Profile),
@@ -77,9 +78,28 @@ impl PangPang {
         }
     }
 
-    pub async fn run(&self, mut rx: tokio::sync::mpsc::Receiver<PangPangMessage>) {
+    pub async fn run(&mut self, mut rx: tokio::sync::mpsc::Receiver<PpMessage>) {
         while let Some(msg) = rx.recv().await {
-            println!("received msg: {:?}", msg);
+            log::debug!("received msg: {:?}", msg);
+            match msg {
+                PpMessage::Hello => log::info!("say hello"),
+                PpMessage::OpenShell(size) => {
+                    let cfg = ssh::Profile {
+                        addr: "localhost:22".to_owned(),
+                        username: "root".to_owned(),
+                        password: "123456".to_owned(),
+                    };
+                    let pty = self.open_pty(Profile::SSH(cfg)).await;
+                    let mut s = pty.open_pty(size).await.unwrap();
+                    tokio::spawn(async move {
+                        let mut buffer = [0u8; 1024];
+                        while let Ok(n) = s.read(&mut buffer[..]).await {
+                            log::info!("receive data: {}", String::from_utf8(buffer[..n].to_vec()).unwrap());
+                        }
+                        log::debug!("disconnected");
+                    });
+                }
+            }
         }
         println!("pangpang backend exit");
     }
@@ -89,11 +109,11 @@ impl PangPang {
 
 
 pub fn run() -> PpMsgSender {
-    let (tx, rx) = tokio::sync::mpsc::channel::<PangPangMessage>(1024);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let (tx, rx) = tokio::sync::mpsc::channel::<PpMessage>(1024);
     std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let pp = PangPang::new();
+            let mut pp = PangPang::new();
             pp.run(rx).await;
         });
     });

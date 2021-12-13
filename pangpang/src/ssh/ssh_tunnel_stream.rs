@@ -61,26 +61,20 @@ impl crate::AsyncRead for SshTunnelStream {
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         let mut this = self.get_mut();
-        if !this.read_buf.is_empty() {
-            let mut write_length = this.read_buf.len();
-            if write_length > buf.remaining() {
-                write_length = buf.remaining();
-            }
-            buf.put_slice(this.read_buf.drain(..write_length).as_slice());
-            return std::task::Poll::Ready(Ok(()));
-        }
         loop {
+            if !this.read_buf.is_empty() {
+                let mut write_length = this.read_buf.len();
+                if write_length > buf.remaining() {
+                    write_length = buf.remaining();
+                }
+                buf.put_slice(this.read_buf.drain(..write_length).as_slice());
+                return std::task::Poll::Ready(Ok(()));
+            }
             return match Box::pin(this.channel.wait()).as_mut().poll(cx) {
                 std::task::Poll::Ready(Some(msg)) => match msg {
                     ChannelMsg::Data { data } => {
                         this.read_buf = data.to_vec();
-
-                        let mut write_length = this.read_buf.len();
-                        if write_length > buf.remaining() {
-                            write_length = buf.remaining();
-                        }
-                        buf.put_slice(this.read_buf.drain(..write_length).as_slice());
-                        std::task::Poll::Ready(Ok(()))
+                        continue
                     }
                     ChannelMsg::Eof | ChannelMsg::Close => {
                         let e = std::io::Error::from(std::io::ErrorKind::UnexpectedEof);
