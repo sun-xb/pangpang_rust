@@ -3,16 +3,18 @@
 mod storage;
 mod errors;
 mod ssh;
+mod terminal;
 
 
-use std::{collections::HashMap, sync::{Arc, Weak}};
+use std::{collections::HashMap, sync::{Arc, Weak}, fmt::Debug};
 
-use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 
 //re-export
 pub use alacritty_terminal;
 pub use alacritty_terminal::term::SizeInfo;
+pub use alacritty_terminal::term::RenderableContent;
 
 pub trait PpStream: AsyncRead + AsyncWrite + Unpin + Send {}
 
@@ -22,15 +24,19 @@ pub trait PpTunnel {
 }
 
 #[async_trait::async_trait]
-pub trait PpPty {
-    async fn open_pty(&self, size: SizeInfo) -> Result<Box<dyn PpStream>, errors::Error>;
+pub trait PpTerminalSession {
+    async fn open_terminal(&self, size: SizeInfo, r: Box<dyn PpTermianlRender>) -> Result<terminal::Terminal, errors::Error>;
+}
+
+pub trait PpTermianlRender: Send + Debug {
+    fn render(&self, r: RenderableContent);
 }
 
 
 #[derive(Debug)]
 pub enum PpMessage {
     Hello,
-    OpenShell(SizeInfo)
+    OpenTerminal(SizeInfo, Box<dyn PpTermianlRender>),
 }
 pub type PpMsgSender = tokio::sync::mpsc::Sender<PpMessage>;
 
@@ -42,7 +48,7 @@ pub enum Profile {
 pub struct PangPang {
     //storage: Box<dyn storage::Storage>,
     tunnels: HashMap<String, Weak<dyn PpTunnel>>,
-    ptys: HashMap<String, Weak<dyn PpPty>>,
+    sessions: HashMap<String, Weak<dyn PpTerminalSession>>,
 }
 
 impl PangPang {
@@ -50,7 +56,7 @@ impl PangPang {
         Self {
             //storage: Box::new(storage::MockStorage::new()),
             tunnels: HashMap::new(),
-            ptys: HashMap::new(),
+            sessions: HashMap::new(),
         }
     }
 
@@ -59,20 +65,20 @@ impl PangPang {
         tunnel.upgrade().unwrap()
     }
 
-    pub async fn open_pty(&mut self, profile: Profile) -> Arc<dyn PpPty> {
+    pub async fn open_session(&mut self, profile: Profile) -> Arc<dyn PpTerminalSession> {
         match profile {
             Profile::SSH(cfg) => {
                 //does this need a lock?
                 let id = cfg.get_id().await;
-                if let Some(pty) = self.ptys.get(&id) {
-                    if let Some(s) = pty.upgrade() {
+                if let Some(s) = self.sessions.get(&id) {
+                    if let Some(s) = s.upgrade() {
                         return s;
                     }
                 }
                 let s = ssh::Session::new(cfg).await;
                 let s = Arc::new(s);
                 let w = Arc::downgrade(&s);
-                self.ptys.insert(id, w);
+                self.sessions.insert(id, w);
                 s
             }
         }
@@ -83,20 +89,16 @@ impl PangPang {
             log::debug!("received msg: {:?}", msg);
             match msg {
                 PpMessage::Hello => log::info!("say hello"),
-                PpMessage::OpenShell(size) => {
+                PpMessage::OpenTerminal(size, r) => {
                     let cfg = ssh::Profile {
                         addr: "localhost:22".to_owned(),
                         username: "root".to_owned(),
                         password: "123456".to_owned(),
                     };
-                    let pty = self.open_pty(Profile::SSH(cfg)).await;
-                    let mut s = pty.open_pty(size).await.unwrap();
+                    let session = self.open_session(Profile::SSH(cfg)).await;
+                    let mut term = session.open_terminal(size, r).await.unwrap();
                     tokio::spawn(async move {
-                        let mut buffer = [0u8; 1024];
-                        while let Ok(n) = s.read(&mut buffer[..]).await {
-                            log::info!("receive data: {}", String::from_utf8(buffer[..n].to_vec()).unwrap());
-                        }
-                        log::debug!("disconnected");
+                        term.run().await;
                     });
                 }
             }

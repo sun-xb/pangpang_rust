@@ -26,7 +26,7 @@ impl epi::App for PangPang {
                         self.tx.blocking_send(pangpang::PpMessage::Hello).unwrap();
                     } else if ui.button("Open").clicked() {
                         let size = pangpang::SizeInfo::new(120.0, 30.0, 1.0, 1.0, 0., 0., false);
-                        self.tx.blocking_send(pangpang::PpMessage::OpenShell(size)).unwrap();
+                        //self.tx.blocking_send(pangpang::PpMessage::OpenShell(size)).unwrap();
                     } else if ui.button("Quit").clicked() {
                         frame.quit();
                     }

@@ -53,8 +53,8 @@ impl crate::PpTunnel for Session {
 }
 
 #[async_trait::async_trait]
-impl crate::PpPty for Session {
-    async fn open_pty(&self, size: crate::SizeInfo) -> Result<Box<dyn crate::PpStream>, crate::errors::Error> {
+impl crate::PpTerminalSession for Session {
+    async fn open_terminal(&self, size: crate::SizeInfo, r: Box<dyn crate::PpTermianlRender>) -> Result<crate::terminal::Terminal, crate::errors::Error> {
         let mut ch = self.s.lock().await.channel_open_session().await.unwrap();
         ch.request_pty(
             false,
@@ -67,7 +67,7 @@ impl crate::PpPty for Session {
         ).await.unwrap();
         ch.request_shell(false).await.unwrap();
         let stream = ssh_tunnel_stream::SshTunnelStream::from(ch);
-        Ok(Box::new(stream))
+        Ok(crate::terminal::Terminal::new(Box::new(stream), r, size))
     }
 }
 
