@@ -76,6 +76,10 @@ impl crate::AsyncRead for SshTunnelStream {
                         this.read_buf = data.to_vec();
                         continue
                     }
+                    ChannelMsg::ExtendedData{data, ext} => {
+                        println!("ext: {:?} -> {}", data, ext);
+                        continue
+                    }
                     ChannelMsg::Eof | ChannelMsg::Close => {
                         let e = std::io::Error::from(std::io::ErrorKind::UnexpectedEof);
                         std::task::Poll::Ready(Err(e))

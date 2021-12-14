@@ -6,7 +6,7 @@ mod handler;
 mod ssh_tunnel_stream;
 
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use tokio::sync::Mutex;
 
@@ -54,11 +54,11 @@ impl crate::PpTunnel for Session {
 
 #[async_trait::async_trait]
 impl crate::PpTerminalSession for Session {
-    async fn open_terminal(&self, size: crate::SizeInfo, r: Box<dyn crate::PpTermianlRender>) -> Result<crate::terminal::Terminal, crate::errors::Error> {
+    async fn open_terminal(&self, size: crate::SizeInfo, r: Arc<RwLock<dyn crate::PpTermianlRender>>) -> Result<crate::terminal::Terminal, crate::errors::Error> {
         let mut ch = self.s.lock().await.channel_open_session().await.unwrap();
         ch.request_pty(
             false,
-            "xterm-256color",
+            "vt100",
             size.cell_width() as u32,
             size.cell_height() as u32,
             size.width() as u32,

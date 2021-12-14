@@ -6,7 +6,7 @@ mod ssh;
 mod terminal;
 
 
-use std::{collections::HashMap, sync::{Arc, Weak}, fmt::Debug};
+use std::{collections::HashMap, sync::{Arc, Weak, RwLock}, fmt::Debug};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
@@ -25,18 +25,19 @@ pub trait PpTunnel {
 
 #[async_trait::async_trait]
 pub trait PpTerminalSession {
-    async fn open_terminal(&self, size: SizeInfo, r: Box<dyn PpTermianlRender>) -> Result<terminal::Terminal, errors::Error>;
+    async fn open_terminal(&self, size: SizeInfo, r: Arc<RwLock<dyn PpTermianlRender>>) -> Result<terminal::Terminal, errors::Error>;
 }
 
-pub trait PpTermianlRender: Send + Debug {
-    fn render(&self, r: RenderableContent);
+pub trait PpTermianlRender: Send + Sync + Debug {
+    fn render(&mut self, r: RenderableContent, col: usize);
 }
 
 
 #[derive(Debug)]
 pub enum PpMessage {
     Hello,
-    OpenTerminal(SizeInfo, Box<dyn PpTermianlRender>),
+    //OpenTerminal(SizeInfo, Box<dyn PpTermianlRender>),
+    OpenTerminal(SizeInfo, Arc<RwLock<dyn PpTermianlRender>>)
 }
 pub type PpMsgSender = tokio::sync::mpsc::Sender<PpMessage>;
 

@@ -2,16 +2,20 @@
 
 mod terminal;
 
+use std::sync::{Arc, RwLock};
+
 use eframe::{epi, egui::{self, FontDefinitions, FontFamily}};
 
 struct PangPang {
     tx: pangpang::PpMsgSender,
+    term_state: Arc<RwLock<terminal::TermState>>,
 }
 
 impl PangPang {
     pub fn new() -> Self {
         Self {
             tx: pangpang::run(),
+            term_state: Arc::new(RwLock::new(terminal::TermState::new())),
         }
     }
 }
@@ -26,7 +30,7 @@ impl epi::App for PangPang {
                         self.tx.blocking_send(pangpang::PpMessage::Hello).unwrap();
                     } else if ui.button("Open").clicked() {
                         let size = pangpang::SizeInfo::new(120.0, 30.0, 1.0, 1.0, 0., 0., false);
-                        //self.tx.blocking_send(pangpang::PpMessage::OpenShell(size)).unwrap();
+                        self.tx.blocking_send(pangpang::PpMessage::OpenTerminal(size, self.term_state.clone())).unwrap();
                     } else if ui.button("Quit").clicked() {
                         frame.quit();
                     }
@@ -59,7 +63,7 @@ impl epi::App for PangPang {
             ui.collapsing("remote file manager", |ui| ui.label("..."));
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add(terminal::TerminalView::new());
+            ui.add(terminal::TerminalView::new(self.term_state.clone()));
         });
     }
 

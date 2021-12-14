@@ -1,4 +1,6 @@
-use alacritty_terminal::{Term, ansi::Processor, term::SizeInfo};
+use std::sync::{Arc, RwLock};
+
+use alacritty_terminal::{Term, ansi::Processor, term::SizeInfo, grid::Dimensions};
 pub use alacritty_terminal::term::RenderableContent;
 use log::info;
 use tokio::io::AsyncReadExt;
@@ -11,13 +13,13 @@ impl alacritty_terminal::event::EventListener for EventListener {}
 
 pub struct Terminal {
     stream:     Box<dyn crate::PpStream>,
-    render:     Box<dyn crate::PpTermianlRender>,
+    render:     Arc<RwLock<dyn crate::PpTermianlRender>>,
     term:       Term<EventListener>,
     processor:  Processor,
 }
 
 impl Terminal {
-    pub fn new(s: Box<dyn crate::PpStream>, r: Box<dyn crate::PpTermianlRender>, size: SizeInfo) -> Self {
+    pub fn new(s: Box<dyn crate::PpStream>, r: Arc<RwLock<dyn crate::PpTermianlRender>>, size: SizeInfo) -> Self {
         let config = alacritty_terminal::config::MockConfig::default();
         Self {
             stream: s,
@@ -33,7 +35,7 @@ impl Terminal {
             for byte in &buffer[..n] {
                 self.processor.advance(&mut self.term, *byte);
             }
-            self.render.render(self.term.renderable_content());
+            self.render.write().unwrap().render(self.term.renderable_content(), self.term.columns());
         }
         info!("terminal exit");
     }
