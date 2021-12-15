@@ -59,7 +59,7 @@ impl crate::PpTerminalSession for Session {
         let mut ch = self.s.lock().await.channel_open_session().await.unwrap();
         ch.request_pty(
             false,
-            "vt100",
+            "xterm-256color",
             size.columns() as u32,
             size.screen_lines() as u32,
             0,

@@ -61,8 +61,21 @@ fn color_to_color32(c: Color) -> Color32 {
             }
         }
         Color::Indexed(i) => {
-            println!("indexed color: {}", i);
-            Color32::BLACK
+            const SYSTEM_COLOURS: [u32; 16] = [
+                0x000000, 0xcd0000, 0x00cd00, 0xcdcd00, 0x0000ee, 0xcd00cd, 0x00cdcd, 0xe5e5e5, 0x7f7f7f,
+                0xff0000, 0x00ff00, 0xffff00, 0x5c5cff, 0xff00ff, 0x00ffff, 0xffffff,
+                ];
+            const CUBE: [u32; 6] = [0, 95, 135, 175, 215, 255];
+            let rgb = if i < 16 {
+                SYSTEM_COLOURS[i as usize]
+            } else if i < 232 {
+                let offset = (i - 16) as usize;
+                (CUBE[offset / 36] << 16) | (CUBE[offset / 6 % 6] << 8) | CUBE[offset % 6]
+            } else {
+                let offset = (i - 232) * 10 + 8;
+                (offset as u32) * 0x010101
+            };
+            Color32::from_rgb(((rgb>>16)&0xff) as u8, ((rgb>>8)&0xff) as u8, (rgb&0xff) as u8)
         }
     }
 }
