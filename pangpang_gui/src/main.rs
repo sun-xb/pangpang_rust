@@ -2,20 +2,20 @@
 
 mod terminal;
 
-use std::sync::{Arc, RwLock};
+use std::{sync::{Arc, RwLock}, collections::HashMap};
 
 use eframe::{epi, egui::{self, FontDefinitions, FontFamily}};
 
 struct PangPang {
     tx: pangpang::PpMsgSender,
-    term_state: Arc<RwLock<terminal::TermState>>,
+    terminal_state: HashMap<String, Arc<RwLock<terminal::TermState>>>,
 }
 
 impl PangPang {
     pub fn new() -> Self {
         Self {
             tx: pangpang::run(),
-            term_state: Arc::new(RwLock::new(terminal::TermState::new())),
+            terminal_state: HashMap::new(),
         }
     }
 }
@@ -27,10 +27,13 @@ impl epi::App for PangPang {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
                     if ui.button("New").clicked() {
-                        self.tx.blocking_send(pangpang::PpMessage::Hello).unwrap();
+                        self.tx.blocking_send(pangpang::PpMessage::Hello).expect("unable to say hello");
                     } else if ui.button("Open").clicked() {
                         let size = pangpang::SizeInfo::new(120.0, 30.0, 1.0, 1.0, 0., 0., false);
-                        self.tx.blocking_send(pangpang::PpMessage::OpenTerminal(size, self.term_state.clone())).unwrap();
+                        let (tx, rx) = pangpang::channel(1024);
+                        let t = Arc::new(RwLock::new(terminal::TermState::new(tx, frame.repaint_signal().clone())));
+                        self.terminal_state.insert("terminal_1".to_owned(), t.clone());
+                        self.tx.blocking_send(pangpang::PpMessage::OpenTerminal(size, rx, t)).unwrap();
                     } else if ui.button("Quit").clicked() {
                         frame.quit();
                     }
@@ -63,7 +66,9 @@ impl epi::App for PangPang {
             ui.collapsing("remote file manager", |ui| ui.label("..."));
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add(terminal::TerminalView::new(self.term_state.clone()));
+            if let Some(t) = self.terminal_state.get("terminal_1") {
+                ui.add(terminal::TerminalView::new(t.clone()));
+            }
         });
     }
 

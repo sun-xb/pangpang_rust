@@ -4,17 +4,22 @@ use pangpang::alacritty_terminal::{
     ansi::{Color, NamedColor},
     term,
 };
-use eframe::egui::{self, text::LayoutJob, Color32, TextFormat, Stroke, TextStyle};
+use eframe::{egui::{self, text::LayoutJob, Color32, TextFormat, Stroke, TextStyle}, epi::RepaintSignal};
 
 
-#[derive(Debug)]
+
 pub struct TermState {
     layout: LayoutJob,
+    repaint: Arc<dyn RepaintSignal>,
+    msg_sender: pangpang::PpTerminalMessageSender,
 }
+
 impl TermState {
-    pub fn new() -> Self {
+    pub fn new(msg_sender: pangpang::PpTerminalMessageSender, repaint: Arc<dyn RepaintSignal>) -> Self {
         Self {
             layout: LayoutJob::default(),
+            repaint,
+            msg_sender,
         }
     }
 }
@@ -62,6 +67,7 @@ fn color_to_color32(c: Color) -> Color32 {
     }
 }
 
+#[pangpang::async_trait]
 impl pangpang::PpTermianlRender for TermState {
     fn render(&mut self, r: pangpang::RenderableContent, col: usize) {
         self.layout = LayoutJob::default();
@@ -92,7 +98,9 @@ impl pangpang::PpTermianlRender for TermState {
                 self.layout.append("\n", 0.0, fmt);
             }
         }
+        self.repaint.request_repaint();
     }
+
 }
 pub struct TerminalView {
     s: Arc<RwLock<TermState>>,
@@ -115,6 +123,26 @@ impl egui::Widget for TerminalView {
         //let pos = galley.pos_from_pcursor(egui::epaint::text::cursor::PCursor { paragraph: 3, offset: 2, prefer_next_row: false });
         //ui.ctx().output().text_cursor_pos = Some(pos.min);
         ui.painter().galley(rect.min, galley);
+
+        {
+            let state = self.s.read().unwrap();
+            for e in &ui.input().events {
+                match e {
+                    egui::Event::Key{key, pressed, modifiers: _} => {
+                        if egui::Key::Enter == *key && *pressed {
+                            state.msg_sender.blocking_send(pangpang::PpTerminalMessage::Input(13u8)).unwrap();
+                        }
+                    }
+                    egui::Event::Text(s) => {
+                        for byte in s.bytes() {
+                            state.msg_sender.blocking_send(pangpang::PpTerminalMessage::Input(byte)).unwrap();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         response
     }
 }

@@ -8,6 +8,7 @@ mod ssh_tunnel_stream;
 
 use std::sync::{Arc, RwLock};
 
+use alacritty_terminal::grid::Dimensions;
 use tokio::sync::Mutex;
 
 
@@ -43,7 +44,7 @@ impl Session {
 
 
 #[async_trait::async_trait]
-impl crate::PpTunnel for Session {
+impl crate::PpTunnelSession for Session {
     async fn connect(&self, host: String, port: u32) -> Result<Box<dyn crate::PpStream>, crate::errors::Error> {
         let mut handle = self.s.lock().await;
         let ch = handle.channel_open_direct_tcpip(host, port, "127.0.0.1", 22).await.unwrap();
@@ -54,20 +55,19 @@ impl crate::PpTunnel for Session {
 
 #[async_trait::async_trait]
 impl crate::PpTerminalSession for Session {
-    async fn open_terminal(&self, size: crate::SizeInfo, r: Arc<RwLock<dyn crate::PpTermianlRender>>) -> Result<crate::terminal::Terminal, crate::errors::Error> {
+    async fn open_terminal(&self, size: crate::SizeInfo, msg_receiver: crate::PpTerminalMessageReceiver, r: Arc<RwLock<dyn crate::PpTermianlRender>>) -> Result<crate::terminal::Terminal, crate::errors::Error> {
         let mut ch = self.s.lock().await.channel_open_session().await.unwrap();
         ch.request_pty(
             false,
             "vt100",
-            size.cell_width() as u32,
-            size.cell_height() as u32,
-            size.width() as u32,
-            size.height() as u32,
+            size.columns() as u32,
+            size.screen_lines() as u32,
+            0,
+            0,
             &[]
         ).await.unwrap();
         ch.request_shell(false).await.unwrap();
-        let stream = ssh_tunnel_stream::SshTunnelStream::from(ch);
-        Ok(crate::terminal::Terminal::new(Box::new(stream), r, size))
+        Ok(crate::terminal::Terminal::new(ch, msg_receiver, r, size))
     }
 }
 
