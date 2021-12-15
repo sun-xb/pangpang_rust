@@ -65,6 +65,7 @@ impl Terminal {
                         self.pty.data(&[s][..]).await.unwrap();
                     }
                     crate::PpTerminalMessage::ReSize(size) => {
+                        self.term.resize(size);
                         self.pty.window_change(
                             size.columns() as u32,
                             size.screen_lines() as u32,

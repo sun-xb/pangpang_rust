@@ -12,6 +12,7 @@ pub struct TermState {
     layout: LayoutJob,
     repaint: Arc<dyn RepaintSignal>,
     msg_sender: pangpang::PpTerminalMessageSender,
+    size: pangpang::SizeInfo,
 }
 
 impl TermState {
@@ -20,6 +21,7 @@ impl TermState {
             layout: LayoutJob::default(),
             repaint,
             msg_sender,
+            size: pangpang::SizeInfo::new(80.0, 20.0, 1.0, 1.0, 0.0, 0.0, false),
         }
     }
 }
@@ -137,6 +139,7 @@ impl egui::Widget for TerminalView {
         //ui.ctx().output().text_cursor_pos = Some(pos.min);
         ui.painter().galley(rect.min, galley);
 
+        let mut window_resized = false;
         {
             let state = self.s.read().unwrap();
             for e in &ui.input().events {
@@ -154,6 +157,20 @@ impl egui::Widget for TerminalView {
                     _ => {}
                 }
             }
+            if rect.width() != state.size.width() || rect.height() != state.size.height() {
+                window_resized = true;
+            }
+        }
+        if window_resized {
+            let mut state = self.s.write().unwrap();
+            state.size = pangpang::SizeInfo::new(
+                rect.width(),
+                rect.height(),
+                ui.fonts().glyph_width(TextStyle::Monospace, 'x'),
+                ui.fonts().row_height(TextStyle::Monospace),
+                0.0, 0.0, false
+            );
+            state.msg_sender.blocking_send(pangpang::PpTerminalMessage::ReSize(state.size)).unwrap();
         }
 
         response
