@@ -1,34 +1,32 @@
 use std::sync::Arc;
 
-pub use alacritty_terminal::term::RenderableContent;
-use alacritty_terminal::{ansi::Processor, term::SizeInfo, Term, grid::Dimensions};
+use alacritty_terminal::{ansi::Processor, grid::Dimensions, event::EventListener, Term};
 use log::info;
 use thrussh::ChannelMsg;
-
-struct EventListener;
-impl alacritty_terminal::event::EventListener for EventListener {}
+pub struct TerminalEventListener;
+impl EventListener for TerminalEventListener {
+    fn send_event(&self, event: alacritty_terminal::event::Event) {
+        println!("event listener: {:?}", event);
+    }
+}
 
 pub struct Terminal {
     pty: thrussh::client::Channel,
-    msg_receiver: crate::PpTerminalMessageReceiver,
-    render: Arc<std::sync::RwLock<dyn crate::PpTermianlRender>>,
-    term: Term<EventListener>,
+    handler: Arc<std::sync::Mutex<Term<TerminalEventListener>>>,
+    param: Box<dyn crate::NewTerminalParameter>,
     processor: Processor,
 }
 
 impl Terminal {
     pub fn new(
         pty: thrussh::client::Channel,
-        msg_receiver: crate::PpTerminalMessageReceiver,
-        r: Arc<std::sync::RwLock<dyn crate::PpTermianlRender>>,
-        size: SizeInfo,
+        handler: Arc<std::sync::Mutex<Term<TerminalEventListener>>>,
+        param: Box<dyn crate::NewTerminalParameter>
     ) -> Self {
-        let config = alacritty_terminal::config::MockConfig::default();
         Self {
             pty,
-            msg_receiver,
-            render: r,
-            term: Term::new(&config, size, EventListener),
+            handler,
+            param,
             processor: Processor::default(),
         }
     }
@@ -42,10 +40,11 @@ impl Terminal {
                         Some(msg) => {
                             match msg {
                                 ChannelMsg::Data{data} => {
+                                    let mut h = self.handler.lock().unwrap();
                                     for byte in data.to_vec() {
-                                        self.processor.advance(&mut self.term, byte);
+                                        self.processor.advance(&mut *h, byte);
                                     }
-                                    self.render.write().unwrap().render(self.term.renderable_content(), self.term.columns())
+                                    self.param.request_repaint();
                                 }
                                 _ => {
                                     info!("unhandled msg: {:?}", msg);
@@ -55,25 +54,24 @@ impl Terminal {
                         None => break,
                     }
                 }
-                msg = self.msg_receiver.recv() => {
+                msg = self.param.receive_msg() => {
                     ui_msg = msg;
                 }
             }
             if let Some(msg) = ui_msg {
                 match msg {
                     crate::PpTerminalMessage::Input(s) => {
-                        self.pty.data(&[s][..]).await.unwrap();
+                        self.pty.data(s.as_ref()).await.unwrap();
                     }
                     crate::PpTerminalMessage::ReSize(size) => {
-                        self.term.resize(size);
                         self.pty.window_change(
                             size.columns() as u32,
                             size.screen_lines() as u32,
                             0, 0
                         ).await.unwrap();
                     }
-                    crate::PpTerminalMessage::Flush => {
-                        self.render.write().unwrap().render(self.term.renderable_content(), self.term.columns());
+                    crate::PpTerminalMessage::Signal(s) => {
+                        self.pty.signal(s).await.unwrap();
                     }
                 }
             }

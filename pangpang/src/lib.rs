@@ -6,16 +6,20 @@ mod ssh;
 mod terminal;
 
 
-use std::{collections::HashMap, sync::{Arc, Weak, RwLock}};
+use std::{collections::HashMap, sync::{Arc, Weak, Mutex}};
 
+use alacritty_terminal::Term;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 
 //re-export
 pub use alacritty_terminal;
+pub use alacritty_terminal::ansi::C0;
 pub use alacritty_terminal::term::SizeInfo;
 pub use alacritty_terminal::term::RenderableContent;
+pub use thrussh::Sig;
 pub use async_trait::async_trait;
+pub use terminal::TerminalEventListener;
 
 pub trait PpStream: AsyncRead + AsyncWrite + Unpin + Send {}
 
@@ -26,34 +30,36 @@ pub trait PpTunnelSession {
 
 #[async_trait]
 pub trait PpTerminalSession {
-    async fn open_terminal(&self, size: SizeInfo,msg_receiver: PpTerminalMessageReceiver, r: Arc<RwLock<dyn PpTermianlRender>>) -> Result<terminal::Terminal, errors::Error>;
+    async fn new_terminal(&self, handler: Arc<Mutex<Term<TerminalEventListener>>>, param: Box<dyn NewTerminalParameter>) -> Result<terminal::Terminal, errors::Error>;
 }
 
-pub trait PpTermianlRender: Send + Sync {
-    fn render(&mut self, r: RenderableContent, col: usize);
-}
+
 
 #[derive(Debug)]
 pub enum PpTerminalMessage {
-    Input(u8),
+    Input(Vec<u8>),
     ReSize(SizeInfo),
-    Flush,
+    Signal(thrussh::Sig),
 }
 pub type PpTerminalMessageSender = tokio::sync::mpsc::Sender<PpTerminalMessage>;
 pub type PpTerminalMessageReceiver = tokio::sync::mpsc::Receiver<PpTerminalMessage>;
 pub use tokio::sync::mpsc::channel;
 
-
+#[async_trait]
+pub trait NewTerminalParameter: Send + Sync {
+    fn request_repaint(&self);
+    async fn receive_msg(&mut self) -> Option<PpTerminalMessage>;
+}
 
 pub enum PpMessage {
     Hello,
-    OpenTerminal(SizeInfo, PpTerminalMessageReceiver, Arc<RwLock<dyn PpTermianlRender>>)
+    NewTerminal(Arc<Mutex<Term<TerminalEventListener>>>, Box<dyn NewTerminalParameter>),
 }
 impl std::fmt::Debug for PpMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Hello => write!(f, "Hello"),
-            Self::OpenTerminal(_, _, _) => write!(f, "OpenTerminal"),
+            Self::NewTerminal(_, _) => write!(f, "NewTerminal"),
         }
     }
 }
@@ -108,14 +114,14 @@ impl PangPang {
         while let Some(msg) = rx.recv().await {
             match msg {
                 PpMessage::Hello => log::info!("say hello"),
-                PpMessage::OpenTerminal(size, msg_receiver, r) => {
+                PpMessage::NewTerminal(h, param) => {
                     let cfg = ssh::Profile {
                         addr: "localhost:22".to_owned(),
                         username: "root".to_owned(),
                         password: "123456".to_owned(),
                     };
                     let session = self.open_session(Profile::SSH(cfg)).await;
-                    let mut term = session.open_terminal(size, msg_receiver, r).await.unwrap();
+                    let mut term = session.new_terminal(h, param).await.unwrap();
                     tokio::spawn(async move {
                         term.run().await;
                     });

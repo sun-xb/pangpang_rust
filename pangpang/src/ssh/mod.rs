@@ -6,10 +6,12 @@ mod handler;
 mod ssh_tunnel_stream;
 
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::Term;
 use tokio::sync::Mutex;
+
+use crate::terminal;
 
 
 
@@ -55,19 +57,22 @@ impl crate::PpTunnelSession for Session {
 
 #[async_trait::async_trait]
 impl crate::PpTerminalSession for Session {
-    async fn open_terminal(&self, size: crate::SizeInfo, msg_receiver: crate::PpTerminalMessageReceiver, r: Arc<RwLock<dyn crate::PpTermianlRender>>) -> Result<crate::terminal::Terminal, crate::errors::Error> {
+    async fn new_terminal(&self,
+        handler: Arc<std::sync::Mutex<Term<crate::TerminalEventListener>>>,
+        param: Box<dyn crate::NewTerminalParameter>
+    ) -> Result<crate::terminal::Terminal, crate::errors::Error> {
         let mut ch = self.s.lock().await.channel_open_session().await.unwrap();
         ch.request_pty(
             false,
             "xterm-256color",
-            size.columns() as u32,
-            size.screen_lines() as u32,
+            80,
+            20,
             0,
             0,
             &[]
         ).await.unwrap();
         ch.request_shell(false).await.unwrap();
-        Ok(crate::terminal::Terminal::new(ch, msg_receiver, r, size))
+        Ok(terminal::Terminal::new(ch, handler, param))
     }
 }
 

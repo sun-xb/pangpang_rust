@@ -1,14 +1,15 @@
 
 
-mod terminal;
 
-use std::{sync::{Arc, RwLock}, collections::HashMap};
+mod terminal_view;
+
+use std::collections::HashMap;
 
 use eframe::{epi, egui::{self, FontDefinitions, FontFamily}};
 
 struct PangPang {
     tx: pangpang::PpMsgSender,
-    terminal_state: HashMap<String, Arc<RwLock<terminal::TermState>>>,
+    terminal_state: HashMap<String, terminal_view::TerminalViewState>,
 }
 
 impl PangPang {
@@ -29,11 +30,12 @@ impl epi::App for PangPang {
                     if ui.button("New").clicked() {
                         self.tx.blocking_send(pangpang::PpMessage::Hello).expect("unable to say hello");
                     } else if ui.button("Open").clicked() {
-                        let size = pangpang::SizeInfo::new(120.0, 30.0, 1.0, 1.0, 0., 0., false);
                         let (tx, rx) = pangpang::channel(1024);
-                        let t = Arc::new(RwLock::new(terminal::TermState::new(tx, frame.repaint_signal().clone())));
-                        self.terminal_state.insert("terminal_1".to_owned(), t.clone());
-                        self.tx.blocking_send(pangpang::PpMessage::OpenTerminal(size, rx, t)).unwrap();
+                        let state = terminal_view::TerminalViewState::new(ui, tx);
+                        let terminal_handler = state.get_terminal_handler();
+                        self.terminal_state.insert("terminal_1".to_owned(), state);
+                        let param = terminal_view::CreateParameter::new(rx, frame.repaint_signal());
+                        self.tx.blocking_send(pangpang::PpMessage::NewTerminal(terminal_handler, Box::new(param))).unwrap();
                     } else if ui.button("Quit").clicked() {
                         frame.quit();
                     }
@@ -66,8 +68,9 @@ impl epi::App for PangPang {
             ui.collapsing("remote file manager", |ui| ui.label("..."));
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(t) = self.terminal_state.get("terminal_1") {
-                ui.add(terminal::TerminalView::new(t.clone()));
+            if let Some(terminal_state) = self.terminal_state.get_mut("terminal_1") {
+                terminal_state.draw(ui);
+                ui.add(terminal_state.build_terminal_view());
             }
         });
     }
@@ -80,7 +83,7 @@ impl epi::App for PangPang {
         //for non-latin
         let name = "simfang";
         let mut fd = FontDefinitions::default();
-        fd.font_data.insert(name.to_owned(), std::borrow::Cow::Borrowed(include_bytes!("../../simfang.ttf")));
+        fd.font_data.insert(name.to_owned(), std::borrow::Cow::Borrowed(include_bytes!("../../fonts/simfang.ttf")));
         fd.fonts_for_family.get_mut(&FontFamily::Monospace).unwrap().push(name.to_owned());
         fd.fonts_for_family.get_mut(&FontFamily::Proportional).unwrap().push(name.to_owned());
         ctx.set_fonts(fd);
