@@ -2,6 +2,7 @@
 
 
 mod terminal_view;
+mod tab_view;
 
 use std::collections::HashMap;
 
@@ -9,14 +10,14 @@ use eframe::{epi, egui::{self, FontDefinitions, FontFamily}};
 
 struct PangPang {
     tx: pangpang::PpMsgSender,
-    terminal_state: HashMap<String, terminal_view::TerminalViewState>,
+    terminals: HashMap<String, terminal_view::TerminalView>,
 }
 
 impl PangPang {
     pub fn new() -> Self {
         Self {
             tx: pangpang::run(),
-            terminal_state: HashMap::new(),
+            terminals: HashMap::new(),
         }
     }
 }
@@ -31,9 +32,9 @@ impl epi::App for PangPang {
                         self.tx.blocking_send(pangpang::PpMessage::Hello).expect("unable to say hello");
                     } else if ui.button("Open").clicked() {
                         let (tx, rx) = pangpang::channel(1024);
-                        let state = terminal_view::TerminalViewState::new(ui, tx);
-                        let terminal_handler = state.get_terminal_handler();
-                        self.terminal_state.insert("terminal_1".to_owned(), state);
+                        let term = terminal_view::TerminalView::new(ui, tx);
+                        let terminal_handler = term.get_terminal_handler();
+                        self.terminals.insert("terminal_1".to_owned(), term);
                         let param = terminal_view::CreateParameter::new(rx, frame.repaint_signal());
                         self.tx.blocking_send(pangpang::PpMessage::NewTerminal(terminal_handler, Box::new(param))).unwrap();
                     } else if ui.button("Quit").clicked() {
@@ -68,9 +69,8 @@ impl epi::App for PangPang {
             ui.collapsing("remote file manager", |ui| ui.label("..."));
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(terminal_state) = self.terminal_state.get_mut("terminal_1") {
-                terminal_state.draw(ui);
-                ui.add(terminal_state.build_terminal_view());
+            if let Some(term) = self.terminals.get_mut("terminal_1") {
+                ui.add(term);
             }
         });
     }

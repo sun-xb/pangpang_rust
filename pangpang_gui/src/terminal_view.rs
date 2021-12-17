@@ -45,13 +45,34 @@ impl ModifiersNumeric for egui::Modifiers {
         n + b'1'
     }
 }
-pub(crate) struct TerminalView<'a> {
+
+pub(crate) struct TerminalView {
+    terminal: Arc<Mutex<Term<pangpang::TerminalEventListener>>>,
     term_mode: TermMode,
+    window_size: egui::Vec2,
     galley: Arc<egui::Galley>,
-    sender: &'a pangpang::PpTerminalMessageSender,
+    sender: PpTerminalMessageSender,
 }
 
-impl<'a> TerminalView<'a> {
+impl TerminalView {
+    pub fn new(ui: &mut egui::Ui, sender: pangpang::PpTerminalMessageSender) -> Self {
+        let config = pangpang::alacritty_terminal::config::MockConfig::default();
+        let size = SizeInfo::new(80.0, 20.0, 1.0, 1.0, 0.0, 0.0, false);
+        let term = Term::new(&config, size, pangpang::TerminalEventListener);
+        let term_mode = *term.mode();
+        Self {
+            terminal: Arc::new(Mutex::new(term)),
+            term_mode,
+            window_size: egui::vec2(0.0, 0.0),
+            galley: ui.fonts().layout_job(LayoutJob::default()),
+            sender,
+        }
+    }
+
+    pub fn get_terminal_handler(&self) -> Arc<Mutex<Term<pangpang::TerminalEventListener>>> {
+        self.terminal.clone()
+    }
+
     fn input_state(&self, input: &InputState) {
         let mut input_sequence: Vec<u8> = Vec::new();
         let mut modifiers_state = egui::Modifiers::default();
@@ -164,67 +185,10 @@ impl<'a> TerminalView<'a> {
             };
         }
         if !input_sequence.is_empty() {
-            self.sender.blocking_send(pangpang::PpTerminalMessage::Input(input_sequence)).unwrap();
+            if let Err(_) = self.sender.blocking_send(pangpang::PpTerminalMessage::Input(input_sequence)) {
+                println!("sesssion closed!");
+            }
         }
-    }
-
-    pub fn new(term_mode: TermMode,
-        galley: Arc<egui::Galley>,
-        sender: &'a pangpang::PpTerminalMessageSender
-    ) -> Self {
-        Self {
-            term_mode,
-            galley,
-            sender
-        }
-    }
-}
-
-impl<'a> egui::Widget for TerminalView<'a> {
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let (rect, response) =
-            ui.allocate_at_least(ui.available_size(), egui::Sense::click_and_drag());
-        ui.painter().galley(rect.min, self.galley.clone());
-
-        self.input_state(ui.input());
-        ui.memory().request_focus(response.id);
-        response
-    }
-}
-
-pub(crate) struct TerminalViewState {
-    terminal: Arc<Mutex<Term<pangpang::TerminalEventListener>>>,
-    term_mode: TermMode,
-    window_size: egui::Vec2,
-    galley: Arc<egui::Galley>,
-    sender: PpTerminalMessageSender,
-}
-
-impl TerminalViewState {
-    pub fn new(ui: &mut egui::Ui, sender: pangpang::PpTerminalMessageSender) -> Self {
-        let config = pangpang::alacritty_terminal::config::MockConfig::default();
-        let size = SizeInfo::new(80.0, 20.0, 1.0, 1.0, 0.0, 0.0, false);
-        let term = Term::new(&config, size, pangpang::TerminalEventListener);
-        let term_mode = *term.mode();
-        Self {
-            terminal: Arc::new(Mutex::new(term)),
-            term_mode,
-            window_size: egui::vec2(0.0, 0.0),
-            galley: ui.fonts().layout_job(LayoutJob::default()),
-            sender,
-        }
-    }
-
-    pub fn get_terminal_handler(&self) -> Arc<Mutex<Term<pangpang::TerminalEventListener>>> {
-        self.terminal.clone()
-    }
-
-    pub fn build_terminal_view(&self) -> TerminalView {
-        TerminalView::new(
-            self.term_mode,
-            self.galley.clone(),
-            &self.sender
-        )
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui) {
@@ -271,6 +235,18 @@ impl TerminalViewState {
             term.resize(size);
         }
         self.galley = ui.fonts().layout_job(layout_job);
+    }
+}
+
+impl egui::Widget for &mut TerminalView {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let inner = ui.allocate_ui(ui.available_size(), |ui| {
+            self.draw(ui);
+            ui.painter().galley(ui.min_rect().min, self.galley.clone());
+            self.input_state(ui.input());
+        });
+        ui.memory().request_focus(inner.response.id);
+        inner.response
     }
 }
 
