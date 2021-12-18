@@ -63,21 +63,14 @@ impl crate::AsyncRead for SshTunnelStream {
         let mut this = self.get_mut();
         loop {
             if !this.read_buf.is_empty() {
-                let mut write_length = this.read_buf.len();
-                if write_length > buf.remaining() {
-                    write_length = buf.remaining();
-                }
-                buf.put_slice(this.read_buf.drain(..write_length).as_slice());
+                let length = this.read_buf.len().min(buf.remaining());
+                buf.put_slice(this.read_buf.drain(..length).as_slice());
                 return std::task::Poll::Ready(Ok(()));
             }
             return match Box::pin(this.channel.wait()).as_mut().poll(cx) {
                 std::task::Poll::Ready(Some(msg)) => match msg {
                     ChannelMsg::Data { data } => {
                         this.read_buf = data.to_vec();
-                        continue
-                    }
-                    ChannelMsg::ExtendedData{data, ext} => {
-                        println!("ext: {:?} -> {}", data, ext);
                         continue
                     }
                     ChannelMsg::Eof | ChannelMsg::Close => {

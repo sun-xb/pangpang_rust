@@ -4,20 +4,19 @@
 mod terminal_view;
 mod tab_view;
 
-use std::collections::HashMap;
 
 use eframe::{epi, egui::{self, FontDefinitions, FontFamily}};
 
 struct PangPang {
     tx: pangpang::PpMsgSender,
-    terminals: HashMap<String, terminal_view::TerminalView>,
+    tab_view: tab_view::TabView,
 }
 
 impl PangPang {
     pub fn new() -> Self {
         Self {
             tx: pangpang::run(),
-            terminals: HashMap::new(),
+            tab_view: tab_view::TabView::new(),
         }
     }
 }
@@ -33,17 +32,16 @@ impl epi::App for PangPang {
                     } else if ui.button("Open").clicked() {
                         let (tx, rx) = pangpang::channel(1024);
                         let term = terminal_view::TerminalView::new(ui, tx);
-                        let terminal_handler = term.get_terminal_handler();
-                        self.terminals.insert("terminal_1".to_owned(), term);
                         let param = terminal_view::CreateParameter::new(rx, frame.repaint_signal());
-                        self.tx.blocking_send(pangpang::PpMessage::NewTerminal(terminal_handler, Box::new(param))).unwrap();
+                        self.tx.blocking_send(pangpang::PpMessage::NewTerminal(term.get_terminal_handler(), Box::new(param))).unwrap();
+                        self.tab_view.insert("title_abc".to_string(), term);
                     } else if ui.button("Quit").clicked() {
                         frame.quit();
                     }
                 });
                 egui::menu::menu(ui, "Help", |ui| {
                     if ui.button("About").clicked() {
-
+                        
                     }
                 });
             });
@@ -69,9 +67,7 @@ impl epi::App for PangPang {
             ui.collapsing("remote file manager", |ui| ui.label("..."));
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(term) = self.terminals.get_mut("terminal_1") {
-                ui.add(term);
-            }
+            ui.add(&mut self.tab_view);
         });
     }
 

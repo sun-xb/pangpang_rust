@@ -55,6 +55,10 @@ impl Terminal {
                     }
                 }
                 msg = self.param.receive_msg() => {
+                    if msg.is_none() {
+                        self.pty.eof().await.unwrap();
+                        break;
+                    }
                     ui_msg = msg;
                 }
             }

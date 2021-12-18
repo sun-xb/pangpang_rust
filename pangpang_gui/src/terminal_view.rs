@@ -46,7 +46,7 @@ impl ModifiersNumeric for egui::Modifiers {
     }
 }
 
-pub(crate) struct TerminalView {
+pub struct TerminalView {
     terminal: Arc<Mutex<Term<pangpang::TerminalEventListener>>>,
     term_mode: TermMode,
     window_size: egui::Vec2,
@@ -71,6 +71,12 @@ impl TerminalView {
 
     pub fn get_terminal_handler(&self) -> Arc<Mutex<Term<pangpang::TerminalEventListener>>> {
         self.terminal.clone()
+    }
+
+    fn write_pty(&self, msg: pangpang::PpTerminalMessage) {
+        if let Err(_) = self.sender.blocking_send(msg) {
+            println!("connection lost!");
+        }
     }
 
     fn input_state(&self, input: &InputState) {
@@ -185,9 +191,7 @@ impl TerminalView {
             };
         }
         if !input_sequence.is_empty() {
-            if let Err(_) = self.sender.blocking_send(pangpang::PpTerminalMessage::Input(input_sequence)) {
-                println!("sesssion closed!");
-            }
+            self.write_pty(pangpang::PpTerminalMessage::Input(input_sequence))
         }
     }
 
@@ -231,7 +235,7 @@ impl TerminalView {
                 ui.fonts().glyph_width(TextStyle::Monospace, 'x'),
                 ui.fonts().row_height(TextStyle::Monospace), 0.0, 0.0, false
             );
-            self.sender.blocking_send(pangpang::PpTerminalMessage::ReSize(size)).unwrap();
+            self.write_pty(pangpang::PpTerminalMessage::ReSize(size));
             term.resize(size);
         }
         self.galley = ui.fonts().layout_job(layout_job);
