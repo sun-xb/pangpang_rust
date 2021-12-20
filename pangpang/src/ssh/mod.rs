@@ -2,66 +2,62 @@
 
 
 
-mod handler;
-mod ssh_tunnel_stream;
+
 
 
 use std::sync::Arc;
 
-use alacritty_terminal::Term;
 use tokio::sync::Mutex;
 
-use crate::terminal;
+
+mod handler;
+mod ssh_tunnel_stream;
+
+use crate::{session::{PpStream, PpSession, PpPty, PpTunnelGuard}, errors};
 
 
-
-pub struct Profile {
-    pub addr: String,
-    pub username: String,
+pub struct SshProfile {
     pub password: String,
 }
 
-impl Profile {
-    pub async  fn get_id(&self) -> String {
-        ["ssh", self.username.as_str(), self.addr.as_str()].join("_")
-    }
-}
-
-pub(crate) struct Session {
+pub struct Session {
     s: Arc<Mutex<thrussh::client::Handle<handler::PpSshHandler>>>,
 }
 
 impl Session {
-    pub async fn new(cfg: Profile) -> Self {
+    pub async fn new(addr: &String, port: u16, username: &String, cfg: SshProfile) -> Result<Self, errors::Error> {
         let config = Arc::new(thrussh::client::Config::default());
-        let mut s = thrussh::client::connect(config, cfg.addr, handler::PpSshHandler).await.unwrap();
-        s.authenticate_password(cfg.username, cfg.password).await.unwrap();
+        let mut s = thrussh::client::connect(config, (addr.as_str(), port), handler::PpSshHandler).await?;
+        s.authenticate_password(username, cfg.password).await?;
         let s = Arc::new(Mutex::new(s));
-        Self {
-            s
-        }
+        Ok(Self { s })
+    }
+
+    pub async fn new_with_stream(stream: PpTunnelGuard, username: &String, cfg: SshProfile) -> Result<Self, errors::Error> {
+        let config = Arc::new(thrussh::client::Config::default());
+        let mut s = thrussh::client::connect_stream(config, stream, handler::PpSshHandler).await?;
+        s.authenticate_password(username, cfg.password).await?;
+        let s = Arc::new(Mutex::new(s));
+        Ok(Self { s })
     }
 }
 
 
 
 #[async_trait::async_trait]
-impl crate::PpTunnelSession for Session {
-    async fn connect(&self, host: String, port: u32) -> Result<Box<dyn crate::PpStream>, crate::errors::Error> {
+impl PpSession for Session {
+    async fn open_tunnel(
+        &self,
+        host: &String,
+        port: u16,
+    ) -> Result<Box<dyn PpStream>, errors::Error> {
         let mut handle = self.s.lock().await;
-        let ch = handle.channel_open_direct_tcpip(host, port, "127.0.0.1", 22).await.unwrap();
-        let stream = ssh_tunnel_stream::SshTunnelStream::from(ch);
-        Ok(Box::new(stream))
+        let ch = handle.channel_open_direct_tcpip(host, port as u32, "127.0.0.1", 22).await?;
+        let tunnel = ssh_tunnel_stream::SshTunnelStream::from(ch);
+        Ok(Box::new(tunnel))
     }
-}
-
-#[async_trait::async_trait]
-impl crate::PpTerminalSession for Session {
-    async fn new_terminal(&self,
-        handler: Arc<std::sync::Mutex<Term<crate::TerminalEventListener>>>,
-        param: Box<dyn crate::NewTerminalParameter>
-    ) -> Result<crate::terminal::Terminal, crate::errors::Error> {
-        let mut ch = self.s.lock().await.channel_open_session().await.unwrap();
+    async fn open_pty(&self) -> Result<Box<dyn PpPty>, errors::Error> {
+        let mut ch = self.s.lock().await.channel_open_session().await?;
         ch.request_pty(
             false,
             "xterm-256color",
@@ -70,11 +66,17 @@ impl crate::PpTerminalSession for Session {
             0,
             0,
             &[]
-        ).await.unwrap();
-        ch.request_shell(false).await.unwrap();
-        Ok(terminal::Terminal::new(ch, handler, param))
+        ).await?;
+        ch.request_shell(false).await?;
+        let term = ssh_tunnel_stream::SshTunnelStream::from(ch);
+        Ok(Box::new(term))
+    }
+    async fn open_port_forward(&self) {
+        todo!()
     }
 }
+
+
 
 
 

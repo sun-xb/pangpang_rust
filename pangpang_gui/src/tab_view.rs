@@ -43,9 +43,9 @@ impl TabView {
                 }
                 if let Some(i) = remove {
                     self.items.remove(i);
-                    if self.selected >= self.items.len() && self.items.len() > 0 {
-                        self.selected = self.items.len() - 1;
-                    }
+                    if self.selected > 0 {
+                        self.selected -= 1;
+                    } 
                 }
             }
         );
@@ -94,7 +94,9 @@ impl<'a> egui::Widget for TabItem<'a> {
             egui::Layout::right_to_left(),
             |ui| {
                 if self.selected {
-                    ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, egui::Color32::DARK_GREEN);
+                    ui.painter().rect_filled(ui.available_rect_before_wrap(), 5.0, egui::Color32::DARK_GREEN);
+                } else {
+                    ui.painter().rect_stroke(ui.available_rect_before_wrap(), 5.0, ui.style().visuals.window_stroke());
                 }
                 let btn = egui::Button::new(char::from_u32(0x1f5d9).unwrap())
                     .text_style(egui::TextStyle::Small)

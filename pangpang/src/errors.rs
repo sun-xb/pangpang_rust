@@ -8,6 +8,7 @@ pub enum Error {
     StdIoError(std::io::Error),
     SshError(thrussh::Error),
     PpStreamError(String),
+    ProfileNotFound(String),
 }
 
 

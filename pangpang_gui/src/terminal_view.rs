@@ -1,29 +1,34 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use eframe::{egui::{self, Stroke, TextFormat, Color32, TextStyle, text::LayoutJob, InputState}, epi};
-use pangpang::{PpTerminalMessageSender, SizeInfo, alacritty_terminal::{ansi::{Color, NamedColor}, term::{TermMode, self}, Term, grid::Dimensions}, C0};
+use pangpang::{alacritty_terminal::{ansi::{Color, NamedColor, C0}, term::{self, SizeInfo}, Term, grid::Dimensions}};
 
 trait ModifiersNumeric {
     fn numeric(&self) -> u8;
 }
 
 pub struct CreateParameter {
-    rx: pangpang::PpTerminalMessageReceiver,
+    rx: pangpang::terminal::PpTerminalMessageReceiver,
     rs: Arc<dyn epi::RepaintSignal>,
+    id: String,
 }
 
 impl CreateParameter {
-    pub fn new(rx: pangpang::PpTerminalMessageReceiver, rs: Arc<dyn epi::RepaintSignal>) -> Self {
-        Self {rx, rs}
+    pub fn new(rx: pangpang::terminal::PpTerminalMessageReceiver, rs: Arc<dyn epi::RepaintSignal>, id: String) -> Self {
+        Self {rx, rs, id}
     }
 }
 #[pangpang::async_trait]
-impl pangpang::NewTerminalParameter for CreateParameter {
+impl pangpang::terminal::NewTerminalParameter for CreateParameter {
     fn request_repaint(&self) {
         self.rs.request_repaint();
     }
-    async fn receive_msg(&mut self) -> Option<pangpang::PpTerminalMessage> {
+    async fn receive_msg(&mut self) -> Option<pangpang::terminal::PpTerminalMessage> {
         self.rx.recv().await
+    }
+
+    fn profile_id(&self) -> &String {
+        &self.id
     }
 }
 
@@ -47,21 +52,21 @@ impl ModifiersNumeric for egui::Modifiers {
 }
 
 pub struct TerminalView {
-    terminal: Arc<Mutex<Term<pangpang::TerminalEventListener>>>,
-    term_mode: TermMode,
+    terminal: Arc<pangpang::pangpang_run_sync::Mutex<Term<pangpang::terminal::TerminalEventListener>>>,
+    term_mode: term::TermMode,
     window_size: egui::Vec2,
     galley: Arc<egui::Galley>,
-    sender: PpTerminalMessageSender,
+    sender: pangpang::terminal::PpTerminalMessageSender,
 }
 
 impl TerminalView {
-    pub fn new(ui: &mut egui::Ui, sender: pangpang::PpTerminalMessageSender) -> Self {
+    pub fn new(ui: &mut egui::Ui, sender: pangpang::terminal::PpTerminalMessageSender) -> Self {
         let config = pangpang::alacritty_terminal::config::MockConfig::default();
         let size = SizeInfo::new(80.0, 20.0, 1.0, 1.0, 0.0, 0.0, false);
-        let term = Term::new(&config, size, pangpang::TerminalEventListener);
+        let term = Term::new(&config, size, pangpang::terminal::TerminalEventListener);
         let term_mode = *term.mode();
         Self {
-            terminal: Arc::new(Mutex::new(term)),
+            terminal: Arc::new(pangpang::pangpang_run_sync::Mutex::new(term)),
             term_mode,
             window_size: egui::vec2(0.0, 0.0),
             galley: ui.fonts().layout_job(LayoutJob::default()),
@@ -69,11 +74,11 @@ impl TerminalView {
         }
     }
 
-    pub fn get_terminal_handler(&self) -> Arc<Mutex<Term<pangpang::TerminalEventListener>>> {
+    pub fn get_terminal_handler(&self) -> Arc<pangpang::pangpang_run_sync::Mutex<Term<pangpang::terminal::TerminalEventListener>>> {
         self.terminal.clone()
     }
 
-    fn write_pty(&self, msg: pangpang::PpTerminalMessage) {
+    fn write_pty(&self, msg: pangpang::terminal::PpTerminalMessage) {
         if let Err(_) = self.sender.blocking_send(msg) {
             println!("connection lost!");
         }
@@ -83,7 +88,7 @@ impl TerminalView {
         let mut input_sequence: Vec<u8> = Vec::new();
         let mut modifiers_state = egui::Modifiers::default();
         let mut cursor_mode = b'[';
-        if self.term_mode.contains(TermMode::APP_CURSOR) {
+        if self.term_mode.contains(term::TermMode::APP_CURSOR) {
             cursor_mode = b'O';
         }
         for e in &input.events {
@@ -191,12 +196,12 @@ impl TerminalView {
             };
         }
         if !input_sequence.is_empty() {
-            self.write_pty(pangpang::PpTerminalMessage::Input(input_sequence))
+            self.write_pty(pangpang::terminal::PpTerminalMessage::Input(input_sequence))
         }
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui) {
-        let mut term = self.terminal.lock().unwrap();
+        let mut term = self.terminal.blocking_lock();
         self.term_mode = *term.mode();
         let content = term.renderable_content();
         let mut layout_job = LayoutJob::default();
@@ -235,7 +240,10 @@ impl TerminalView {
                 ui.fonts().glyph_width(TextStyle::Monospace, 'x'),
                 ui.fonts().row_height(TextStyle::Monospace), 0.0, 0.0, false
             );
-            self.write_pty(pangpang::PpTerminalMessage::ReSize(size));
+            self.write_pty(pangpang::terminal::PpTerminalMessage::ReSize(
+                (self.window_size.x / ui.fonts().glyph_width(TextStyle::Monospace, 'x')) as usize,
+                (self.window_size.y / ui.fonts().row_height(TextStyle::Monospace)) as usize
+            ));
             term.resize(size);
         }
         self.galley = ui.fonts().layout_job(layout_job);

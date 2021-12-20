@@ -5,19 +5,29 @@ mod terminal_view;
 mod tab_view;
 
 
-use eframe::{epi, egui::{self, FontDefinitions, FontFamily}};
+use std::sync::Arc;
+
+use eframe::{epi, egui};
 
 struct PangPang {
-    tx: pangpang::PpMsgSender,
+    tx: pangpang::pangpang_run_sync::PpMsgSender,
     tab_view: tab_view::TabView,
 }
 
 impl PangPang {
     pub fn new() -> Self {
         Self {
-            tx: pangpang::run(),
+            tx: pangpang::pangpang_run_sync::run(),
             tab_view: tab_view::TabView::new(),
         }
+    }
+
+    fn open_terminal(&mut self, id: String, title: String, ui: &mut egui::Ui, rs: Arc<dyn epi::RepaintSignal>) {
+        let (tx, rx) = pangpang::terminal::channel(1024);
+        let term = terminal_view::TerminalView::new(ui, tx);
+        let param = terminal_view::CreateParameter::new(rx, rs, id);
+        self.tx.blocking_send(pangpang::pangpang_run_sync::PpMessage::NewTerminal(term.get_terminal_handler(), Box::new(param))).unwrap();
+        self.tab_view.insert(title, term);
     }
 }
 
@@ -28,13 +38,9 @@ impl epi::App for PangPang {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
                     if ui.button("New").clicked() {
-                        self.tx.blocking_send(pangpang::PpMessage::Hello).expect("unable to say hello");
+                        self.tx.blocking_send(pangpang::pangpang_run_sync::PpMessage::Hello).expect("unable to say hello");
                     } else if ui.button("Open").clicked() {
-                        let (tx, rx) = pangpang::channel(1024);
-                        let term = terminal_view::TerminalView::new(ui, tx);
-                        let param = terminal_view::CreateParameter::new(rx, frame.repaint_signal());
-                        self.tx.blocking_send(pangpang::PpMessage::NewTerminal(term.get_terminal_handler(), Box::new(param))).unwrap();
-                        self.tab_view.insert("title_abc".to_string(), term);
+                        self.open_terminal("root@localhost:8022".to_string(), "title".to_string(), ui, frame.repaint_signal());
                     } else if ui.button("Quit").clicked() {
                         frame.quit();
                     }
@@ -75,13 +81,14 @@ impl epi::App for PangPang {
         "pangpang app"
     }
 
+    #[cfg(feature = "zh_CN")]
     fn setup(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>, _storage: Option<&dyn epi::Storage>) {
         //for non-latin
         let name = "simfang";
-        let mut fd = FontDefinitions::default();
+        let mut fd = egui::FontDefinitions::default();
         fd.font_data.insert(name.to_owned(), std::borrow::Cow::Borrowed(include_bytes!("../../fonts/simfang.ttf")));
-        fd.fonts_for_family.get_mut(&FontFamily::Monospace).unwrap().push(name.to_owned());
-        fd.fonts_for_family.get_mut(&FontFamily::Proportional).unwrap().push(name.to_owned());
+        fd.fonts_for_family.get_mut(&egui::FontFamily::Monospace).unwrap().push(name.to_owned());
+        fd.fonts_for_family.get_mut(&egui::FontFamily::Proportional).unwrap().push(name.to_owned());
         ctx.set_fonts(fd);
     }
 }

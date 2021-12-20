@@ -1,6 +1,9 @@
 use std::future::Future;
 
 use thrussh::ChannelMsg;
+use tokio::io::{AsyncWrite, AsyncRead};
+
+use crate::{session::PpPty, errors};
 
 pub struct SshTunnelStream {
     channel: thrussh::client::Channel,
@@ -16,7 +19,7 @@ impl From<thrussh::client::Channel> for SshTunnelStream {
     }
 }
 
-impl crate::AsyncWrite for SshTunnelStream {
+impl AsyncWrite for SshTunnelStream {
     fn poll_write(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -54,7 +57,7 @@ impl crate::AsyncWrite for SshTunnelStream {
     }
 }
 
-impl crate::AsyncRead for SshTunnelStream {
+impl AsyncRead for SshTunnelStream {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -86,4 +89,10 @@ impl crate::AsyncRead for SshTunnelStream {
     }
 }
 
-impl crate::PpStream for SshTunnelStream {}
+#[async_trait::async_trait]
+impl PpPty for SshTunnelStream {
+    async fn resize(&mut self, width: usize, height: usize) -> Result<(), errors::Error> {
+        self.channel.window_change(width as u32, height as u32, 0, 0).await?;
+        Ok(())
+    }
+}
