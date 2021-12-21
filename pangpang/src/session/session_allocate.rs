@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::{errors, ssh};
+use crate::errors;
+use super::ssh;
 
 use super::{PpSession, PpSessionManager};
 

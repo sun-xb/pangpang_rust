@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{profile::{Profile, Protocol}, errors, ssh::SshProfile};
+use crate::{profile::{Profile, Protocol}, errors, session::ssh::SshProfile};
 
 
 

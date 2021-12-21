@@ -11,6 +11,7 @@ use tokio::sync::Notify;
 use crate::errors;
 use crate::profile;
 
+pub mod ssh;
 mod session_guard;
 mod tunnel_guard;
 mod pty_guard;
