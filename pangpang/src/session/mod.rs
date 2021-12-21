@@ -39,13 +39,13 @@ pub trait PpSession: Send + Sync + Unpin {
 }
 
 pub struct PpSessionManager {
-    config: Box<dyn crate::storage::Storage + Send + Sync>,
+    config: Arc<Mutex<dyn crate::storage::Storage>>,
     session_cache: Arc<Mutex<SessionCacheType>>,
     connecting_map: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
 }
 
 impl PpSessionManager {
-    pub fn new(config: Box<dyn crate::storage::Storage + Send + Sync>) -> Self {
+    pub fn new(config: Arc<Mutex<dyn crate::storage::Storage>>) -> Self {
         Self {
             config,
             session_cache: Arc::new(Mutex::new(SessionCacheType::new())),
@@ -54,7 +54,7 @@ impl PpSessionManager {
     }
 
     pub async fn open_session(&self, id: &String) -> Result<PpSessionGuard, errors::Error> {
-        let cfg = self.config.get(id)?;
+        let cfg = self.config.lock().await.get(id)?;
         if cfg.capacity().contains(profile::Capacity::SESSION_CACHE) {
             self.open_session_from_cache(id).await
         } else {
@@ -105,7 +105,7 @@ impl PpSessionManager {
 
     #[async_recursion::async_recursion]
     async fn alloc_session(&self, id: &String) -> Result<Arc<dyn PpSession>, errors::Error> {
-        let prof = self.config.get(id)?;
+        let prof = self.config.lock().await.get(id)?;
         let alloc = session_allocate::Allocator;
         match prof.protocol {
             profile::Protocol::Ssh(cfg) => {

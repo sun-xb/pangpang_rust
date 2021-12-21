@@ -16,6 +16,7 @@ mod ssh_tunnel_stream;
 use crate::{session::{PpStream, PpSession, PpPty, PpTunnelGuard}, errors};
 
 
+#[derive(Clone)]
 pub struct SshProfile {
     pub password: String,
 }

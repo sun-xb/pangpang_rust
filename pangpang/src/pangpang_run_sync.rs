@@ -5,6 +5,8 @@ use alacritty_terminal::Term;
 
 
 pub use tokio::sync::Mutex;
+
+use crate::storage::Storage;
 pub type PpMsgSender = tokio::sync::mpsc::Sender<PpMessage>;
 pub type PpMsgReceiver = tokio::sync::mpsc::Receiver<PpMessage>;
 pub enum PpMessage {
@@ -17,11 +19,11 @@ impl Debug for PpMessage {
     }
 }
 
-pub fn run() -> PpMsgSender {
+pub fn run(cfg: Arc<Mutex<dyn Storage>>) -> PpMsgSender {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<PpMessage>(1024);
     std::thread::spawn(|| {
         tokio::runtime::Runtime::new().unwrap().block_on(async move {
-            let pp = crate::PangPang::new();
+            let pp = crate::PangPang::new(cfg);
             loop {
                 match rx.recv().await {
                     None => break,

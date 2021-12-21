@@ -21,6 +21,19 @@ pub struct Profile {
     pub transport: Option<String>,
     pub protocol: Protocol,
 }
+impl Clone for Profile {
+    fn clone(&self) -> Self {
+        Self {
+            username: self.username.clone(),
+            address: self.address.clone(), 
+            port: self.port.clone(), 
+            transport: self.transport.clone(), 
+            protocol: match self.protocol {
+                Protocol::Ssh(ref cfg) => Protocol::Ssh(cfg.clone()),
+            }
+        }
+    }
+}
 
 impl Profile {
     pub fn id(&self) -> String {

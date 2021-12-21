@@ -88,7 +88,7 @@ impl<'a> TabItem<'a> {
 
 impl<'a> egui::Widget for TabItem<'a> {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let width = ui.available_width().min(100.0);
+        let width = ui.available_width().min(150.0);
         ui.allocate_ui_with_layout(
             egui::vec2(width, ui.available_height()),
             egui::Layout::right_to_left(),

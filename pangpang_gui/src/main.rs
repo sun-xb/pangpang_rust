@@ -10,14 +10,18 @@ use std::sync::Arc;
 use eframe::{epi, egui};
 
 struct PangPang {
+    cfg: Arc<pangpang::pangpang_run_sync::Mutex<dyn pangpang::storage::Storage>>,
     tx: pangpang::pangpang_run_sync::PpMsgSender,
     tab_view: tab_view::TabView,
 }
 
 impl PangPang {
     pub fn new() -> Self {
+        let cfg = pangpang::storage::MockStorage::new();
+        let cfg = Arc::new(pangpang::pangpang_run_sync::Mutex::new(cfg));
         Self {
-            tx: pangpang::pangpang_run_sync::run(),
+            cfg: cfg.clone(),
+            tx: pangpang::pangpang_run_sync::run(cfg),
             tab_view: tab_view::TabView::new(),
         }
     }
@@ -40,7 +44,7 @@ impl epi::App for PangPang {
                     if ui.button("New").clicked() {
                         self.tx.blocking_send(pangpang::pangpang_run_sync::PpMessage::Hello).expect("unable to say hello");
                     } else if ui.button("Open").clicked() {
-                        self.open_terminal("root@localhost:8022".to_string(), "title".to_string(), ui, frame.repaint_signal());
+                        
                     } else if ui.button("Quit").clicked() {
                         frame.quit();
                     }
@@ -55,16 +59,16 @@ impl epi::App for PangPang {
         egui::SidePanel::left("left_session_panel")
         .resizable(true).show(ctx, |ui| {
             ui.vertical_centered_justified(|ui| ui.heading("sessions"));
-            ui.collapsing("local sessions", |ui| {
-                ui.label("session 1");
-                ui.label("session 2");
-                ui.label("root@192.168.1.100:22");
-                ui.label("rdp://223.234.123.111:3333");
-            });
-            ui.collapsing("cloud sessions", |ui| {
-                ui.label("root@111.22.33.44:8022");
-                ui.label("mysql://111.0.0.123:8000/db");
-                ui.label("sqlite:///home/pangpang/pangpang.db");
+            ui.collapsing("sessions", |ui| {
+                let cfg = self.cfg.clone();
+                for (id, p) in cfg.blocking_lock().iter() {
+                    let btn = egui::Button::new(id)
+                        .frame(false)
+                        .wrap(false);
+                    if ui.add(btn).clicked() {
+                        self.open_terminal(id.to_string(), p.address.to_string(), ui, frame.repaint_signal());
+                    }
+                }
             });
             ui.collapsing("remote server info", |ui| {
                 ui.label("cpu usage");

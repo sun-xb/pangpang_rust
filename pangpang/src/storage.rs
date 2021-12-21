@@ -1,20 +1,23 @@
+use std::collections::HashMap;
+
 use crate::{profile::{Profile, Protocol}, errors, ssh::SshProfile};
 
 
 
-pub trait Storage {
+pub trait Storage: Send + Sync {
     fn get(&self, id: &String) -> Result<Profile, errors::Error>;
+    fn iter(&self) -> Box<dyn Iterator<Item = (&String, &Profile)> + '_>;
 }
 
-pub struct MockStorage;
+pub struct MockStorage {
+    map: HashMap<String, Profile>,
+}
 impl MockStorage {
     pub fn new() -> Self {
-        Self {}
-    }
-}
+        let mut s = Self {
+            map: HashMap::new(),
+        };
 
-impl Storage for MockStorage {
-    fn get(&self, id: &String) -> Result<Profile, errors::Error> {
         let profile_1 = Profile {
             username: "root".to_string(),
             address: "localhost".to_string(),
@@ -33,14 +36,24 @@ impl Storage for MockStorage {
                 password: "123456".to_string(),
             }),
         };
-        
 
-        if id == &profile_1.id() {
-            Ok(profile_1)
-        } else if id == &profile_2.id() {
-            Ok(profile_2)
+        s.map.insert(profile_1.id(), profile_1);
+        s.map.insert(profile_2.id(), profile_2);
+        
+        s
+    }
+}
+
+impl Storage for MockStorage {
+    fn get(&self, id: &String) -> Result<Profile, errors::Error> {
+        if let Some(p) = self.map.get(id) {
+            Ok(p.clone())
         } else {
             Err(errors::Error::ProfileNotFound(id.to_owned()))
         }
+    }
+
+    fn iter(&self) -> Box<dyn Iterator<Item = (&String, &Profile)> + '_> {
+        Box::new(self.map.iter())
     }
 }

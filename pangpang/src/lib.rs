@@ -28,8 +28,7 @@ pub struct PangPang {
 }
 
 impl PangPang {
-    fn new() -> Self {
-        let cfg = Box::new(storage::MockStorage::new());
+    fn new(cfg: Arc<Mutex<dyn storage::Storage>>) -> Self {
         Self {
             mgr: session::PpSessionManager::new(cfg),
         }
