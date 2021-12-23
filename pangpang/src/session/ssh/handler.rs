@@ -30,9 +30,5 @@ impl thrussh::client::Handler for PpSshHandler {
         self.finished(session)
     }
 
-    /*fn channel_open_confirmation(self, id: thrussh::ChannelId, max_packet_size: u32, window_size: u32, session: thrussh::client::Session) -> Self::FutureUnit {
-        println!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa open confirmation");
-        self.finished(session)
-    }*/
 }
 

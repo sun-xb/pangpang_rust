@@ -1,10 +1,11 @@
 
 use eframe::egui;
 
+use crate::terminal_view::TerminalView;
 
 
-type TabViewData = Vec<(String, crate::terminal_view::TerminalView)>;
-
+type TabViewType = TerminalView;
+type TabViewData = Vec<(String, TabViewType)>;
 
 pub struct TabView {
     items: TabViewData,
@@ -19,8 +20,8 @@ impl TabView {
         }
     }
 
-    pub fn insert(&mut self, title: String, term: crate::terminal_view::TerminalView) {
-        self.items.push((title, term));
+    pub fn insert(&mut self, title: String, view: TabViewType) {
+        self.items.push((title, view));
         self.selected = self.items.len() - 1;
     }
 
@@ -59,8 +60,8 @@ impl egui::Widget for &mut TabView {
             egui::Layout::top_down(egui::Align::LEFT),
             |ui| {
                 self.paint_tab_bar(ui);
-                if let Some(item) = self.items.get_mut(self.selected) {
-                    ui.add(&mut item.1);
+                if let Some((_, view)) = self.items.get_mut(self.selected) {
+                    ui.add(view);
                 }
             }
         ).response

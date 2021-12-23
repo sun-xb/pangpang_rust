@@ -3,7 +3,10 @@ use std::future::Future;
 use thrussh::ChannelMsg;
 use tokio::io::{AsyncWrite, AsyncRead};
 
-use crate::{session::PpPty, errors};
+use super::PpPty;
+
+use crate::errors;
+
 
 pub struct SshTunnelStream {
     channel: thrussh::client::Channel,
@@ -92,7 +95,9 @@ impl AsyncRead for SshTunnelStream {
 #[async_trait::async_trait]
 impl PpPty for SshTunnelStream {
     async fn resize(&mut self, width: usize, height: usize) -> Result<(), errors::Error> {
-        self.channel.window_change(width as u32, height as u32, 0, 0).await?;
-        Ok(())
+        match self.channel.window_change(width as u32, height as u32, 0, 0).await {
+            Err(e) => Err(errors::Error::WritePtyError(format!("pty resize error: {:?}", e))),
+            _ => Ok(())
+        }
     }
 }

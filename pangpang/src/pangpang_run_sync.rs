@@ -1,17 +1,14 @@
 use std::{sync::Arc, fmt::Debug};
 
-use alacritty_terminal::Term;
-
-
 
 pub use tokio::sync::Mutex;
 
-use crate::storage::Storage;
+use crate::{storage::Storage, terminal::{msg::PpTerminalMessageReceiver, Render}};
 pub type PpMsgSender = tokio::sync::mpsc::Sender<PpMessage>;
 pub type PpMsgReceiver = tokio::sync::mpsc::Receiver<PpMessage>;
 pub enum PpMessage {
     Hello,
-    NewTerminal(Arc<Mutex<Term<crate::terminal::TerminalEventListener>>>, Box<dyn crate::terminal::NewTerminalParameter>),
+    NewTerminal(String, PpTerminalMessageReceiver, Arc<Mutex<dyn Render>>),
 }
 impl Debug for PpMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,11 +27,12 @@ pub fn run(cfg: Arc<Mutex<dyn Storage>>) -> PpMsgSender {
                     Some(msg) => {
                         match msg {
                             PpMessage::Hello => log::info!("ui thread say us hello!"),
-                            PpMessage::NewTerminal(handler, parameter) => {
-                                let mut term = pp.open_terminal(handler, parameter).await;
-                                tokio::spawn(async move {
-                                    term.run().await
-                                });
+                            PpMessage::NewTerminal(id, input, render) => {
+                                if let Ok(mut term) = pp.open_terminal(id, input, render).await {
+                                    tokio::spawn(async move {
+                                        term.run().await
+                                    });
+                                }
                             }
                         }
                     }

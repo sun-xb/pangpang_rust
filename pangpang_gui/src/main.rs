@@ -26,12 +26,11 @@ impl PangPang {
         }
     }
 
-    fn open_terminal(&mut self, id: String, title: String, ui: &mut egui::Ui, rs: Arc<dyn epi::RepaintSignal>) {
+    fn open_terminal(&mut self, id: String, title: String, rs: Arc<dyn epi::RepaintSignal>) {
         let (tx, rx) = pangpang::terminal::channel(1024);
-        let term = terminal_view::TerminalView::new(ui, tx);
-        let param = terminal_view::CreateParameter::new(rx, rs, id);
-        self.tx.blocking_send(pangpang::pangpang_run_sync::PpMessage::NewTerminal(term.get_terminal_handler(), Box::new(param))).unwrap();
-        self.tab_view.insert(title, term);
+        let view = terminal_view::TerminalView::new(tx, rs);
+        self.tx.blocking_send(pangpang::pangpang_run_sync::PpMessage::NewTerminal(id, rx, view.render_state.clone())).unwrap();
+        self.tab_view.insert(title, view);
     }
 }
 
@@ -61,12 +60,12 @@ impl epi::App for PangPang {
             ui.vertical_centered_justified(|ui| ui.heading("sessions"));
             ui.collapsing("sessions", |ui| {
                 let cfg = self.cfg.clone();
-                for (id, p) in cfg.blocking_lock().iter() {
-                    let btn = egui::Button::new(id)
+                for (_, profile) in cfg.blocking_lock().iter() {
+                    let btn = egui::Button::new(profile.id())
                         .frame(false)
                         .wrap(false);
                     if ui.add(btn).clicked() {
-                        self.open_terminal(id.to_string(), p.address.to_string(), ui, frame.repaint_signal());
+                        self.open_terminal(profile.id(), profile.address.clone(), frame.repaint_signal());
                     }
                 }
             });

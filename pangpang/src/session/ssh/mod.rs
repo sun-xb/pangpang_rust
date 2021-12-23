@@ -13,7 +13,9 @@ use tokio::sync::Mutex;
 mod handler;
 mod ssh_tunnel_stream;
 
-use crate::{session::{PpStream, PpSession, PpPty, PpTunnelGuard}, errors};
+use super::{PpStream, PpSession, PpPty, PpTunnelGuard};
+
+use crate::errors;
 
 
 #[derive(Clone)]

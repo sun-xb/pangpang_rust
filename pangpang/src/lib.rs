@@ -16,8 +16,8 @@ use std::sync::Arc;
 
 //re-export
 pub use alacritty_terminal;
-use alacritty_terminal::Term;
 pub use async_trait::async_trait;
+use terminal::msg::PpTerminalMessageReceiver;
 use tokio::sync::Mutex;
 
 
@@ -34,29 +34,28 @@ impl PangPang {
         }
     }
 
-    pub async fn open_session(&self, id: &String) -> session::PpSessionGuard {
-        let sess = self.mgr.open_session(id).await.unwrap();
-        sess
+    pub async fn open_session(&self, id: &String) -> Result<session::PpSessionGuard, errors::Error> {
+        self.mgr.open_session(id).await
     }
 
-    pub async fn open_tunnel(&self, id: &String) -> session::PpTunnelGuard {
-        self.mgr.open_tunnel(id, &"host".to_string(), 100).await.unwrap()
+    pub async fn open_tunnel(&self, id: &String) -> Result<session::PpTunnelGuard, errors::Error> {
+        self.mgr.open_tunnel(id, &"host".to_string(), 100).await
     }
 
-    pub async fn open_pty(&self, id: &String) -> session::PpPtyGuard {
-        self.mgr.open_pty(id).await.unwrap()
+    pub async fn open_pty(&self, id: &String) -> Result<session::PpPtyGuard, errors::Error> {
+        self.mgr.open_pty(id).await
     }
 
     pub async fn open_terminal(
         &self,
-        handler: Arc<Mutex<Term<terminal::TerminalEventListener>>>,
-        param: Box<dyn terminal::NewTerminalParameter>
-    ) -> terminal::Terminal {
-        terminal::Terminal::new(
-            self.open_pty(param.profile_id()).await,
-            handler,
-            param
-        )
+        id: String,
+        input: PpTerminalMessageReceiver,
+        ui_render: Arc<Mutex<dyn terminal::Render>>
+    ) -> Result<terminal::Terminal, errors::Error> {
+        Ok(terminal::Terminal::new(
+            Box::new(self.open_pty(&id).await?),
+            input, ui_render
+        ))
     }
 }
 
