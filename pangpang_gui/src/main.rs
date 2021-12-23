@@ -84,7 +84,7 @@ impl epi::App for PangPang {
         "pangpang app"
     }
 
-    #[cfg(feature = "zh_CN")]
+    //#[cfg(feature = "zh_CN")]
     fn setup(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>, _storage: Option<&dyn epi::Storage>) {
         //for non-latin
         let name = "simfang";

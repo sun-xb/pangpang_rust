@@ -6,10 +6,12 @@ use pangpang::alacritty_terminal::{term::{TermMode, self}, ansi::{NamedColor, Co
 
 
 
+#[derive(Clone)]
 pub struct TerminalRender{
     is_visible: bool,
     mode: TermMode,
     layout: LayoutJob,
+    pub cursor_pos: (usize, usize),
     repaint: Arc<dyn epi::RepaintSignal>,
 }
 
@@ -20,6 +22,7 @@ impl TerminalRender {
             is_visible: true,
             mode: TermMode::empty(),
             layout: LayoutJob::default(),
+            cursor_pos: (0, 0),
             repaint: rs,
         }
     }
@@ -39,6 +42,7 @@ impl pangpang::terminal::Render for TerminalRender {
             return
         }
         self.mode = render.mode;
+        self.cursor_pos = (render.cursor.point.column.0, render.cursor.point.line.0.try_into().unwrap());
         self.layout = LayoutJob::default();
         let mut first_char = true;
         for cell in render.display_iter {

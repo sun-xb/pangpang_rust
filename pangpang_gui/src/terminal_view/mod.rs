@@ -172,11 +172,15 @@ impl TerminalView {
 impl egui::Widget for &mut TerminalView {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let inner = ui.allocate_ui(ui.available_size(), |ui| {
-            let state = self.render_state.blocking_lock();
-            ui.painter().galley(ui.min_rect().min, ui.fonts().layout_job(state.layout()));
-            let mode = state.term_mode();
-            drop(state);
-            self.input_state(ui.input(), mode);
+            let state = self.render_state.blocking_lock().clone();
+
+            let terminal_pos = ui.min_rect().min;
+            let galley = ui.fonts().layout_job(state.layout());
+            let cursor_pos = galley.pos_from_pcursor(egui::epaint::text::cursor::PCursor { paragraph: state.cursor_pos.1, offset: state.cursor_pos.0, prefer_next_row: false })
+                .translate(terminal_pos.to_vec2()).left_top();
+            ui.output().text_cursor_pos = Some(cursor_pos);
+            ui.painter().galley(terminal_pos, galley);
+            self.input_state(ui.input(), state.term_mode());
             if self.window_size != ui.available_size() {
                 self.window_size = ui.available_size();
                 let cell_width = ui.fonts().glyph_width(egui::TextStyle::Monospace, 'x');
