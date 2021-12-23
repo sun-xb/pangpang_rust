@@ -9,5 +9,6 @@ pub type PpTerminalMessageSender = tokio::sync::mpsc::Sender<PpTerminalMessage>;
 pub enum PpTerminalMessage {
     Input(Vec<u8>),
     ReSize(usize, usize),
+    Scroll(i32),
 }
 

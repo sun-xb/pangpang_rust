@@ -51,14 +51,14 @@ impl TerminalView {
         }
     }
 
-    fn input_state(&self, input: &egui::InputState, mode: term::TermMode) {
+    fn input_state(&self, ui: &egui::Ui, mode: term::TermMode) {
         let mut input_sequence: Vec<u8> = Vec::new();
         let mut modifiers_state = egui::Modifiers::default();
         let mut cursor_mode = b'[';
         if mode.contains(term::TermMode::APP_CURSOR) {
             cursor_mode = b'O';
         }
-        for e in &input.events {
+        for e in &ui.input().events {
             match e {
                 egui::Event::Key{key, pressed, modifiers} if *pressed => {
                     modifiers_state = *modifiers;
@@ -165,6 +165,10 @@ impl TerminalView {
         if !input_sequence.is_empty() {
             self.write_pty(pangpang::terminal::msg::PpTerminalMessage::Input(input_sequence))
         }
+        let scroll_delta = ui.input().scroll_delta.y;
+        if scroll_delta != 0.0 {
+            self.write_pty(pangpang::terminal::msg::PpTerminalMessage::Scroll((scroll_delta / ui.fonts().row_height(egui::TextStyle::Monospace)) as i32));
+        }
     }
 
 }
@@ -180,7 +184,7 @@ impl egui::Widget for &mut TerminalView {
                 .translate(terminal_pos.to_vec2()).left_top();
             ui.output().text_cursor_pos = Some(cursor_pos);
             ui.painter().galley(terminal_pos, galley);
-            self.input_state(ui.input(), state.term_mode());
+            self.input_state(ui, state.term_mode());
             if self.window_size != ui.available_size() {
                 self.window_size = ui.available_size();
                 let cell_width = ui.fonts().glyph_width(egui::TextStyle::Monospace, 'x');

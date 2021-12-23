@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use alacritty_terminal::{ansi::Processor, config::MockConfig, term::SizeInfo, Term};
+use alacritty_terminal::{ansi::Processor, config::MockConfig, term::SizeInfo, Term, grid};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, sync::Mutex};
 
 use crate::{session::PpPty, errors};
@@ -69,12 +69,21 @@ impl Terminal {
             PpTerminalMessage::Input(s) => {
                 match self.pty.write_all(s.as_slice()).await {
                     Err(e) => Err(errors::Error::WritePtyError(format!("input to pty error: {:?}", e))),
-                    _ => Ok(()),
+                    _ => {
+                        self.term.scroll_display(grid::Scroll::Bottom);
+                        self.ui_render.lock().await.draw(self.term.renderable_content());
+                        Ok(())
+                    }
                 }
             }
             PpTerminalMessage::ReSize(width, height) => {
                 self.term.resize(SizeInfo::new(width as f32, height as f32, 1.0, 1.0, 0.0, 0.0, false));
                 self.pty.resize(width, height).await
+            }
+            PpTerminalMessage::Scroll(delta) => {
+                self.term.scroll_display(grid::Scroll::Delta(delta));
+                self.ui_render.lock().await.draw(self.term.renderable_content());
+                Ok(())
             }
         }
     }

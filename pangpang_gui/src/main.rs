@@ -103,6 +103,7 @@ fn main() {
         transparent: true,
         resizable: true,
         drag_and_drop_support: true,
+        initial_window_size: Some(egui::vec2(1600.0, 1000.0)),
         ..Default::default()
     };
     eframe::run_native(Box::new(app), options);
