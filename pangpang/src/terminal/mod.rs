@@ -11,9 +11,9 @@ pub use tokio::sync::mpsc::channel;
 
 pub struct TerminalEventListener;
 impl EventListener for TerminalEventListener {
-    fn send_event(&self, event: alacritty_terminal::event::Event) {
-        println!("event listener: {:?}", event);
-    }
+    //fn send_event(&self, event: alacritty_terminal::event::Event) {
+    //    println!("event listener: {:?}", event);
+    //}
 }
 
 pub type TerminalRender<'a> = RenderableContent<'a>;

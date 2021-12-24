@@ -10,6 +10,7 @@ use std::sync::Arc;
 use eframe::{epi, egui};
 
 struct PangPang {
+    ts: f64,
     cfg: Arc<pangpang::pangpang_run_sync::Mutex<dyn pangpang::storage::Storage>>,
     pp_sender: pangpang::pangpang_run_sync::PpMsgSender,
     tab_view: tab_view::TabView,
@@ -20,9 +21,20 @@ impl PangPang {
         let cfg = pangpang::storage::MockStorage::new();
         let cfg = Arc::new(pangpang::pangpang_run_sync::Mutex::new(cfg));
         Self {
+            ts: 0.0,
             cfg: cfg.clone(),
             pp_sender: pangpang::pangpang_run_sync::run(cfg),
             tab_view: tab_view::TabView::new(),
+        }
+    }
+
+    fn fps_control(&mut self, ctx: &egui::CtxRef) {
+        let fps = 60.0;
+        let ts = (1.0/fps) - (ctx.input().time - self.ts);
+        self.ts = ctx.input().time;
+        if ts > 0.0  {
+            self.ts += ts;
+            std::thread::sleep(std::time::Duration::from_millis((ts * 1000.0) as u64));
         }
     }
 
@@ -36,6 +48,7 @@ impl PangPang {
 
 impl epi::App for PangPang {
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+        self.fps_control(ctx);
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ctx.set_pixels_per_point(1.5);
             egui::menu::bar(ui, |ui| {
@@ -84,7 +97,6 @@ impl epi::App for PangPang {
         "pangpang app"
     }
 
-    #[cfg(feature = "zh_CN")]
     fn setup(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>, _storage: Option<&dyn epi::Storage>) {
         //for non-latin
         let name = "simfang";

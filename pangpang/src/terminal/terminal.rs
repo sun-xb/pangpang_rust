@@ -17,6 +17,7 @@ pub struct Terminal {
     ui_render: Arc<Mutex<dyn Render>>,
     term: AlacrittyTerminal,
     processor: Processor,
+    mouse_primary_key_pressed: bool,
 }
 
 
@@ -28,6 +29,7 @@ impl Terminal {
             pty, input, ui_render,
             term: AlacrittyTerminal::new(&cfg, size, TerminalEventListener),
             processor: Processor::new(),
+            mouse_primary_key_pressed: false,
         }
     }
 
@@ -85,6 +87,40 @@ impl Terminal {
             PpTerminalMessage::Scroll(delta) => {
                 self.term.scroll_display(grid::Scroll::Delta(delta));
                 self.ui_render.lock().await.draw(self.term.renderable_content());
+                Ok(())
+            }
+            PpTerminalMessage::Clicked(line, column, pressed) => {
+                if pressed {
+                    self.term.selection = Some(alacritty_terminal::selection::Selection::new(
+                        alacritty_terminal::selection::SelectionType::Simple, 
+                        alacritty_terminal::index::Point {
+                            line: alacritty_terminal::index::Line(line),
+                            column: alacritty_terminal::index::Column(column)
+                        }, alacritty_terminal::index::Side::Left
+                    ));
+                    self.mouse_primary_key_pressed = true;
+                } else {
+                    if let Some(sr) = &mut self.term.selection {
+                        sr.update(alacritty_terminal::index::Point {
+                            line: alacritty_terminal::index::Line(line),
+                            column: alacritty_terminal::index::Column(column)
+                        }, alacritty_terminal::index::Side::Left);
+                    }
+                    self.mouse_primary_key_pressed = false;
+                }
+                self.ui_render.lock().await.draw(self.term.renderable_content());
+                Ok(())
+            }
+            PpTerminalMessage::MouseMove(line, column) => {
+                if let Some(sr) = &mut self.term.selection {
+                    if self.mouse_primary_key_pressed {
+                        sr.update(alacritty_terminal::index::Point {
+                            line: alacritty_terminal::index::Line(line),
+                            column: alacritty_terminal::index::Column(column)
+                        }, alacritty_terminal::index::Side::Left);
+                        self.ui_render.lock().await.draw(self.term.renderable_content());
+                    }
+                }
                 Ok(())
             }
         }

@@ -11,7 +11,8 @@ pub struct TerminalRender{
     is_visible: bool,
     mode: TermMode,
     layout: LayoutJob,
-    pub cursor_pos: (usize, usize),
+    cursor_pos: (usize, usize),
+    display_offset: usize,
     repaint: Arc<dyn epi::RepaintSignal>,
 }
 
@@ -23,6 +24,7 @@ impl TerminalRender {
             mode: TermMode::empty(),
             layout: LayoutJob::default(),
             cursor_pos: (0, 0),
+            display_offset: 0,
             repaint: rs,
         }
     }
@@ -34,6 +36,14 @@ impl TerminalRender {
     pub fn layout(&self) -> LayoutJob {
         self.layout.clone()
     }
+
+    pub fn cursor_pos(&self) -> (usize, usize) {
+        self.cursor_pos
+    }
+
+    pub fn display_offset(&self) -> usize {
+        self.display_offset
+    }
 }
 
 impl pangpang::terminal::Render for TerminalRender {
@@ -43,6 +53,7 @@ impl pangpang::terminal::Render for TerminalRender {
         }
         self.mode = render.mode;
         self.cursor_pos = (render.cursor.point.column.0, render.cursor.point.line.0.try_into().unwrap());
+        self.display_offset = render.display_offset;
         self.layout = LayoutJob::default();
         let mut first_char = true;
         for cell in render.display_iter {
@@ -68,6 +79,12 @@ impl pangpang::terminal::Render for TerminalRender {
 
                 if render.cursor.point == cell.point {
                     fmt.background = color_to_color32(Color::Named(NamedColor::Cursor));
+                }
+
+                if let Some(sr) = render.selection {
+                    if sr.contains(cell.point) {
+                        fmt.background = Color32::DARK_GRAY;
+                    }
                 }
 
                 self.layout.append(cell.c.to_string().as_str(), 0.0, fmt);

@@ -51,11 +51,11 @@ impl TerminalView {
         }
     }
 
-    fn input_state(&self, ui: &egui::Ui, mode: term::TermMode) {
+    fn input_state(&self, ui: &egui::Ui, state: terminal_render::TerminalRender, galley: Arc<egui::Galley>) {
         let mut input_sequence: Vec<u8> = Vec::new();
         let mut modifiers_state = egui::Modifiers::default();
         let mut cursor_mode = b'[';
-        if mode.contains(term::TermMode::APP_CURSOR) {
+        if state.term_mode().contains(term::TermMode::APP_CURSOR) {
             cursor_mode = b'O';
         }
         for e in &ui.input().events {
@@ -159,11 +159,25 @@ impl TerminalView {
                         }
                     }
                 }
+                egui::Event::PointerButton{pos, button: egui::PointerButton::Primary, pressed, modifiers: _} => {
+                    let cursor = galley.cursor_from_pos(pos.to_vec2() - ui.min_rect().min.to_vec2()).pcursor;
+                    let paragraph: i32 = cursor.paragraph.try_into().unwrap();
+                    let scroll: i32 = state.display_offset().try_into().unwrap();
+                    let line = paragraph - scroll;
+                    self.write_pty(pangpang::terminal::msg::PpTerminalMessage::Clicked(line, cursor.offset, *pressed));
+                }
+                egui::Event::PointerMoved(pos) => {
+                    let cursor = galley.cursor_from_pos(pos.to_vec2() - ui.min_rect().min.to_vec2()).pcursor;
+                    let paragraph: i32 = cursor.paragraph.try_into().unwrap();
+                    let scroll: i32 = state.display_offset().try_into().unwrap();
+                    let line = paragraph - scroll;
+                    self.write_pty(pangpang::terminal::msg::PpTerminalMessage::MouseMove(line, cursor.offset));
+                }
                 _ => {}
             };
         }
         if !input_sequence.is_empty() {
-            self.write_pty(pangpang::terminal::msg::PpTerminalMessage::Input(input_sequence))
+            self.write_pty(pangpang::terminal::msg::PpTerminalMessage::Input(input_sequence));
         }
         let scroll_delta = ui.input().scroll_delta.y;
         if scroll_delta != 0.0 {
@@ -180,11 +194,11 @@ impl egui::Widget for &mut TerminalView {
 
             let terminal_pos = ui.min_rect().min;
             let galley = ui.fonts().layout_job(state.layout());
-            let cursor_pos = galley.pos_from_pcursor(egui::epaint::text::cursor::PCursor { paragraph: state.cursor_pos.1, offset: state.cursor_pos.0, prefer_next_row: false })
+            let cursor_pos = galley.pos_from_pcursor(egui::epaint::text::cursor::PCursor { paragraph: state.cursor_pos().1, offset: state.cursor_pos().0, prefer_next_row: false })
                 .translate(terminal_pos.to_vec2()).left_top();
             ui.output().text_cursor_pos = Some(cursor_pos);
-            ui.painter().galley(terminal_pos, galley);
-            self.input_state(ui, state.term_mode());
+            ui.painter().galley(terminal_pos, galley.clone());
+            self.input_state(ui, state, galley);
             if self.window_size != ui.available_size() {
                 self.window_size = ui.available_size();
                 let cell_width = ui.fonts().glyph_width(egui::TextStyle::Monospace, 'x');
