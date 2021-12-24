@@ -33,6 +33,7 @@ pub struct TerminalView {
     pub render_state: Arc<Mutex<terminal_render::TerminalRender>>,
     sender: pangpang::terminal::msg::PpTerminalMessageSender,
     window_size: egui::Vec2,
+    mouse_primary_key_down: bool,
 }
 
 
@@ -42,6 +43,7 @@ impl TerminalView {
             render_state: Arc::new(Mutex::new(terminal_render::TerminalRender::new(rs))),
             sender,
             window_size: egui::vec2(0.0, 0.0),
+            mouse_primary_key_down: false,
         }
     }
 
@@ -51,7 +53,7 @@ impl TerminalView {
         }
     }
 
-    fn input_state(&self, ui: &egui::Ui, state: terminal_render::TerminalRender, galley: Arc<egui::Galley>) {
+    fn input_state(&mut self, ui: &egui::Ui, state: terminal_render::TerminalRender, galley: Arc<egui::Galley>) {
         let mut input_sequence: Vec<u8> = Vec::new();
         let mut modifiers_state = egui::Modifiers::default();
         let mut cursor_mode = b'[';
@@ -159,19 +161,28 @@ impl TerminalView {
                         }
                     }
                 }
-                egui::Event::PointerButton{pos, button: egui::PointerButton::Primary, pressed, modifiers: _} => {
+                egui::Event::PointerButton{pos, button: egui::PointerButton::Secondary, pressed: true, modifiers: _} => {
                     let cursor = galley.cursor_from_pos(pos.to_vec2() - ui.min_rect().min.to_vec2()).pcursor;
-                    let paragraph: i32 = cursor.paragraph.try_into().unwrap();
-                    let scroll: i32 = state.display_offset().try_into().unwrap();
-                    let line = paragraph - scroll;
-                    self.write_pty(pangpang::terminal::msg::PpTerminalMessage::Clicked(line, cursor.offset, *pressed));
+                    self.write_pty(pangpang::terminal::msg::PpTerminalMessage::Copy(cursor.paragraph.try_into().unwrap(), cursor.offset));
+                }
+                egui::Event::PointerButton{pos, button: egui::PointerButton::Primary, pressed, modifiers: _} => {
+                    self.mouse_primary_key_down = *pressed;
+                    if self.mouse_primary_key_down {
+                        let cursor = galley.cursor_from_pos(pos.to_vec2() - ui.min_rect().min.to_vec2()).pcursor;
+                        let paragraph: i32 = cursor.paragraph.try_into().unwrap();
+                        let scroll: i32 = state.display_offset().try_into().unwrap();
+                        let line = paragraph - scroll;
+                        self.write_pty(pangpang::terminal::msg::PpTerminalMessage::SelectionStart(line, cursor.offset));
+                    }
                 }
                 egui::Event::PointerMoved(pos) => {
-                    let cursor = galley.cursor_from_pos(pos.to_vec2() - ui.min_rect().min.to_vec2()).pcursor;
-                    let paragraph: i32 = cursor.paragraph.try_into().unwrap();
-                    let scroll: i32 = state.display_offset().try_into().unwrap();
-                    let line = paragraph - scroll;
-                    self.write_pty(pangpang::terminal::msg::PpTerminalMessage::MouseMove(line, cursor.offset));
+                    if self.mouse_primary_key_down {
+                        let cursor = galley.cursor_from_pos(pos.to_vec2() - ui.min_rect().min.to_vec2()).pcursor;
+                        let paragraph: i32 = cursor.paragraph.try_into().unwrap();
+                        let scroll: i32 = state.display_offset().try_into().unwrap();
+                        let line = paragraph - scroll;
+                        self.write_pty(pangpang::terminal::msg::PpTerminalMessage::SelectionUpdate(line, cursor.offset));
+                    }
                 }
                 _ => {}
             };

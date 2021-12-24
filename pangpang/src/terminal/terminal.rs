@@ -1,6 +1,8 @@
+
 use std::sync::Arc;
 
 use alacritty_terminal::{ansi::Processor, config::MockConfig, term::SizeInfo, Term, grid};
+use clipboard::ClipboardProvider;
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, sync::Mutex};
 
 use crate::{session::PpPty, errors};
@@ -17,7 +19,7 @@ pub struct Terminal {
     ui_render: Arc<Mutex<dyn Render>>,
     term: AlacrittyTerminal,
     processor: Processor,
-    mouse_primary_key_pressed: bool,
+    clipboard: clipboard::ClipboardContext,
 }
 
 
@@ -29,7 +31,7 @@ impl Terminal {
             pty, input, ui_render,
             term: AlacrittyTerminal::new(&cfg, size, TerminalEventListener),
             processor: Processor::new(),
-            mouse_primary_key_pressed: false,
+            clipboard: clipboard::ClipboardProvider::new().unwrap(),
         }
     }
 
@@ -74,6 +76,7 @@ impl Terminal {
                 match self.pty.write_all(s.as_slice()).await {
                     Err(e) => Err(errors::Error::WritePtyError(format!("input to pty error: {:?}", e))),
                     _ => {
+                        self.term.selection = None;
                         self.term.scroll_display(grid::Scroll::Bottom);
                         self.ui_render.lock().await.draw(self.term.renderable_content());
                         Ok(())
@@ -89,38 +92,65 @@ impl Terminal {
                 self.ui_render.lock().await.draw(self.term.renderable_content());
                 Ok(())
             }
-            PpTerminalMessage::Clicked(line, column, pressed) => {
-                if pressed {
-                    self.term.selection = Some(alacritty_terminal::selection::Selection::new(
-                        alacritty_terminal::selection::SelectionType::Simple, 
+            PpTerminalMessage::SelectionStart(line, column) => {
+                self.term.selection = Some(
+                    alacritty_terminal::selection::Selection::new(
+                        alacritty_terminal::selection::SelectionType::Simple,
                         alacritty_terminal::index::Point {
                             line: alacritty_terminal::index::Line(line),
                             column: alacritty_terminal::index::Column(column)
-                        }, alacritty_terminal::index::Side::Left
-                    ));
-                    self.mouse_primary_key_pressed = true;
-                } else {
-                    if let Some(sr) = &mut self.term.selection {
-                        sr.update(alacritty_terminal::index::Point {
-                            line: alacritty_terminal::index::Line(line),
-                            column: alacritty_terminal::index::Column(column)
-                        }, alacritty_terminal::index::Side::Left);
-                    }
-                    self.mouse_primary_key_pressed = false;
-                }
+                        },
+                        alacritty_terminal::index::Side::Left
+                    )
+                );
                 self.ui_render.lock().await.draw(self.term.renderable_content());
                 Ok(())
             }
-            PpTerminalMessage::MouseMove(line, column) => {
+            PpTerminalMessage::SelectionUpdate(line, column) => {
                 if let Some(sr) = &mut self.term.selection {
-                    if self.mouse_primary_key_pressed {
-                        sr.update(alacritty_terminal::index::Point {
+                    sr.update(
+                        alacritty_terminal::index::Point {
                             line: alacritty_terminal::index::Line(line),
                             column: alacritty_terminal::index::Column(column)
-                        }, alacritty_terminal::index::Side::Left);
-                        self.ui_render.lock().await.draw(self.term.renderable_content());
+                        },
+                        alacritty_terminal::index::Side::Left
+                    );
+                    self.ui_render.lock().await.draw(self.term.renderable_content());
+                }
+                Ok(())
+            }
+            PpTerminalMessage::Copy(line, colune) => {
+                let mut copyed = false;
+                if let Some(s) = &self.term.selection {
+                    if let Some(sr) = s.to_range(&self.term) {
+                        if sr.contains(
+                            alacritty_terminal::index::Point {
+                                line: alacritty_terminal::index::Line(line),
+                                column: alacritty_terminal::index::Column(colune)
+                            }
+                        ) {
+                            if let Some(s) = self.term.selection_to_string() {
+                                self.clipboard.set_contents(s).unwrap();
+                                copyed = true;
+                                self.term.selection = None;
+                            }
+                        } else {
+                            self.term.selection = None;
+                        }
                     }
                 }
+                if !copyed && self.term.selection.is_none() {
+                    let mut data: Vec<u8> = Vec::new();
+                    for byte in self.clipboard.get_contents().unwrap().bytes() {
+                        data.push(byte);
+                    }
+                    if let Err(e) = self.pty.write_all(data.as_slice()).await {
+                        return Err(errors::Error::WritePtyError(format!("paste to pty error: {:?}", e)));
+                    }
+                    self.term.selection = None;
+                    self.term.scroll_display(grid::Scroll::Bottom);
+                }
+                self.ui_render.lock().await.draw(self.term.renderable_content());
                 Ok(())
             }
         }
