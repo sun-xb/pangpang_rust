@@ -56,6 +56,8 @@ impl Terminal {
                         None => {
                             if let Err(e) = self.pty.shutdown().await {
                                 return Err(errors::Error::WritePtyError(format!("close channel failed with {:?}", e)));
+                            } else {
+                                return Ok(());
                             }
                         }
                     }

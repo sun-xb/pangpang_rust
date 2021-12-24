@@ -22,6 +22,7 @@ impl PpSessionGuard {
 
 impl Drop for PpSessionGuard {
     fn drop(&mut self) {
+        log::info!("pangpang session droped: {:?}", self.id);
         if let Some(id) = &self.id {
             let cache = self.cache.clone();
             let session_id = id.clone();
@@ -31,6 +32,7 @@ impl Drop for PpSessionGuard {
                     *counter -= 1;
                     if 0 == *counter {
                         cache.remove(&session_id);
+                        log::info!("pangpang session removed from cache: {}", session_id);
                     }
                 } else {
                     unreachable!("session must be cached")

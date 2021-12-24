@@ -28,9 +28,13 @@ pub fn run(cfg: Arc<Mutex<dyn Storage>>) -> PpMsgSender {
                         match msg {
                             PpMessage::Hello => log::info!("ui thread say us hello!"),
                             PpMessage::NewTerminal(id, input, render) => {
-                                if let Ok(mut term) = pp.open_terminal(id, input, render).await {
+                                if let Ok(mut term) = pp.open_terminal(id.clone(), input, render).await {
                                     tokio::spawn(async move {
-                                        term.run().await
+                                        if let Err(e) = term.run().await {
+                                            log::error!("terminal exited with error: {:?}, id: {}", e, id);
+                                        } else {
+                                            log::info!("terminal exited, id: {}", id);
+                                        }
                                     });
                                 }
                             }

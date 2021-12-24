@@ -79,6 +79,7 @@ impl PpSessionManager {
         loop {
             if let Some((counter, s)) = self.session_cache.lock().await.get_mut(id) {
                 *counter += 1;
+                log::info!("open session from cache id: {}, ref: {}", id, counter);
                 return Ok(PpSessionGuard::new(s.clone(), Some(id.to_owned()), self.session_cache.clone()));
             }
             let mut connecting = self.connecting_map.lock().await;
@@ -97,6 +98,7 @@ impl PpSessionManager {
                         .lock()
                         .await
                         .insert(id.to_owned(), (1, s.clone()));
+                    self.connecting_map.lock().await.remove(id).unwrap();
                     notify.notify_waiters();
                     return Ok(PpSessionGuard::new(s, Some(id.to_owned()), self.session_cache.clone()));
                 }

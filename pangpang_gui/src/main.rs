@@ -11,7 +11,7 @@ use eframe::{epi, egui};
 
 struct PangPang {
     cfg: Arc<pangpang::pangpang_run_sync::Mutex<dyn pangpang::storage::Storage>>,
-    tx: pangpang::pangpang_run_sync::PpMsgSender,
+    pp_sender: pangpang::pangpang_run_sync::PpMsgSender,
     tab_view: tab_view::TabView,
 }
 
@@ -21,7 +21,7 @@ impl PangPang {
         let cfg = Arc::new(pangpang::pangpang_run_sync::Mutex::new(cfg));
         Self {
             cfg: cfg.clone(),
-            tx: pangpang::pangpang_run_sync::run(cfg),
+            pp_sender: pangpang::pangpang_run_sync::run(cfg),
             tab_view: tab_view::TabView::new(),
         }
     }
@@ -29,7 +29,7 @@ impl PangPang {
     fn open_terminal(&mut self, id: String, title: String, rs: Arc<dyn epi::RepaintSignal>) {
         let (tx, rx) = pangpang::terminal::channel(1024);
         let view = terminal_view::TerminalView::new(tx, rs);
-        self.tx.blocking_send(pangpang::pangpang_run_sync::PpMessage::NewTerminal(id, rx, view.render_state.clone())).unwrap();
+        self.pp_sender.blocking_send(pangpang::pangpang_run_sync::PpMessage::NewTerminal(id, rx, view.render_state.clone())).unwrap();
         self.tab_view.insert(title, view);
     }
 }
@@ -41,7 +41,7 @@ impl epi::App for PangPang {
             egui::menu::bar(ui, |ui| {
                 egui::menu::menu(ui, "File", |ui| {
                     if ui.button("New").clicked() {
-                        self.tx.blocking_send(pangpang::pangpang_run_sync::PpMessage::Hello).expect("unable to say hello");
+                        self.pp_sender.blocking_send(pangpang::pangpang_run_sync::PpMessage::Hello).expect("unable to say hello");
                     } else if ui.button("Open").clicked() {
                         
                     } else if ui.button("Quit").clicked() {
@@ -84,7 +84,7 @@ impl epi::App for PangPang {
         "pangpang app"
     }
 
-    //#[cfg(feature = "zh_CN")]
+    #[cfg(feature = "zh_CN")]
     fn setup(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>, _storage: Option<&dyn epi::Storage>) {
         //for non-latin
         let name = "simfang";
