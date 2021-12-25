@@ -1,5 +1,6 @@
 [workspace]
 members = [
 	"pangpang",
-	"pangpang_gui"
+	"pangpang_gui",
+	"pangpang_tui"
 ]
