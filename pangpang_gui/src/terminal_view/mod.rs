@@ -192,6 +192,16 @@ impl TerminalView {
         }
         let scroll_delta = ui.input().scroll_delta.y;
         if scroll_delta != 0.0 {
+            if let Some(pos) = ui.input().pointer.hover_pos() {
+                if self.mouse_primary_key_down {
+                    let cursor = galley.cursor_from_pos(pos.to_vec2() - ui.min_rect().min.to_vec2()).pcursor;
+                    let paragraph: i32 = cursor.paragraph.try_into().unwrap();
+                    let scroll: i32 = state.display_offset().try_into().unwrap();
+                    let line = paragraph - scroll;
+                    self.write_pty(pangpang::terminal::msg::PpTerminalMessage::SelectionUpdate(line, cursor.offset));
+                }
+            }
+            
             self.write_pty(pangpang::terminal::msg::PpTerminalMessage::Scroll((scroll_delta / ui.fonts().row_height(egui::TextStyle::Monospace)) as i32));
         }
     }
