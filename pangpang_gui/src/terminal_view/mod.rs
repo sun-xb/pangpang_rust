@@ -38,9 +38,9 @@ pub struct TerminalView {
 
 
 impl TerminalView {
-    pub fn new(sender: pangpang::terminal::msg::PpTerminalMessageSender, rs: Arc<dyn epi::RepaintSignal>) -> Self {
+    pub fn new(sender: pangpang::terminal::msg::PpTerminalMessageSender, frame: epi::Frame) -> Self {
         Self {
-            render_state: Arc::new(Mutex::new(terminal_render::TerminalRender::new(rs))),
+            render_state: Arc::new(Mutex::new(terminal_render::TerminalRender::new(frame))),
             sender,
             window_size: egui::vec2(0.0, 0.0),
             mouse_primary_key_down: false,

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+
 
 use eframe::{egui::{text::LayoutJob, TextStyle, Color32, TextFormat, Stroke}, epi};
 use pangpang::alacritty_terminal::{term::{TermMode, self}, ansi::{NamedColor, Color}};
@@ -13,19 +13,19 @@ pub struct TerminalRender{
     layout: LayoutJob,
     cursor_pos: (usize, usize),
     display_offset: usize,
-    repaint: Arc<dyn epi::RepaintSignal>,
+    frame: epi::Frame,
 }
 
 
 impl TerminalRender {
-    pub fn new(rs: Arc<dyn epi::RepaintSignal>) -> Self {
+    pub fn new(frame: epi::Frame) -> Self {
         Self {
             is_visible: true,
             mode: TermMode::empty(),
             layout: LayoutJob::default(),
             cursor_pos: (0, 0),
             display_offset: 0,
-            repaint: rs,
+            frame,
         }
     }
 
@@ -90,7 +90,7 @@ impl pangpang::terminal::Render for TerminalRender {
                 self.layout.append(cell.c.to_string().as_str(), 0.0, fmt);
             }
         }
-        self.repaint.request_repaint();
+        self.frame.request_repaint();
     }
 }
 

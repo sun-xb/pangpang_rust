@@ -8,5 +8,5 @@ edition = "2021"
 [dependencies]
 env_logger = "0.9"
 pangpang = { path="../pangpang" }
-eframe = "0.15"
+eframe = "0.16"
 

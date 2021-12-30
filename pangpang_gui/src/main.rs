@@ -38,21 +38,21 @@ impl PangPang {
         }
     }
 
-    fn open_terminal(&mut self, id: String, title: String, rs: Arc<dyn epi::RepaintSignal>) {
+    fn open_terminal(&mut self, id: String, title: String, frame: epi::Frame) {
         let (tx, rx) = pangpang::terminal::channel(1024);
-        let view = terminal_view::TerminalView::new(tx, rs);
+        let view = terminal_view::TerminalView::new(tx, frame);
         self.pp_sender.blocking_send(pangpang::pangpang_run_sync::PpMessage::NewTerminal(id, rx, view.render_state.clone())).unwrap();
         self.tab_view.insert(title, view);
     }
 }
 
 impl epi::App for PangPang {
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::CtxRef, frame: &epi::Frame) {
         self.fps_control(ctx);
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ctx.set_pixels_per_point(1.5);
             egui::menu::bar(ui, |ui| {
-                egui::menu::menu(ui, "File", |ui| {
+                egui::menu::menu_button(ui, "File", |ui| {
                     if ui.button("New").clicked() {
                         self.pp_sender.blocking_send(pangpang::pangpang_run_sync::PpMessage::Hello).expect("unable to say hello");
                     } else if ui.button("Open").clicked() {
@@ -61,7 +61,7 @@ impl epi::App for PangPang {
                         frame.quit();
                     }
                 });
-                egui::menu::menu(ui, "Help", |ui| {
+                egui::menu::menu_button(ui, "Help", |ui| {
                     if ui.button("About").clicked() {
                         
                     }
@@ -78,7 +78,7 @@ impl epi::App for PangPang {
                         .frame(false)
                         .wrap(false);
                     if ui.add(btn).clicked() {
-                        self.open_terminal(profile.id(), profile.address.clone(), frame.repaint_signal());
+                        self.open_terminal(profile.id(), profile.address.clone(), frame.clone());
                     }
                 }
             });
@@ -97,11 +97,11 @@ impl epi::App for PangPang {
         "pangpang app"
     }
 
-    fn setup(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>, _storage: Option<&dyn epi::Storage>) {
+    fn setup(&mut self, ctx: &egui::CtxRef, _frame: &epi::Frame, _storage: Option<&dyn epi::Storage>) {
         //for non-latin
         let name = "simfang";
         let mut fd = egui::FontDefinitions::default();
-        fd.font_data.insert(name.to_owned(), std::borrow::Cow::Borrowed(include_bytes!("../../fonts/simfang.ttf")));
+        fd.font_data.insert(name.to_owned(), egui::FontData::from_static(include_bytes!("../../fonts/simfang.ttf")));
         fd.fonts_for_family.get_mut(&egui::FontFamily::Monospace).unwrap().push(name.to_owned());
         fd.fonts_for_family.get_mut(&egui::FontFamily::Proportional).unwrap().push(name.to_owned());
         ctx.set_fonts(fd);

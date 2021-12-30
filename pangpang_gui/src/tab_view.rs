@@ -99,8 +99,7 @@ impl<'a> egui::Widget for TabItem<'a> {
                 } else {
                     ui.painter().rect_stroke(ui.available_rect_before_wrap(), 5.0, ui.style().visuals.window_stroke());
                 }
-                let btn = egui::Button::new(char::from_u32(0x1f5d9).unwrap())
-                    .text_style(egui::TextStyle::Small)
+                let btn = egui::Button::new(egui::RichText::new(char::from_u32(0x1f5d9).unwrap()).text_style(egui::TextStyle::Small))
                     .frame(false);
                 if ui.add(btn).clicked() {
                     *self.close = true;
