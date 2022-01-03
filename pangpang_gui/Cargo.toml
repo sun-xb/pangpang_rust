@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 env_logger = "0.9"
 pangpang = { path="../pangpang" }
-eframe = "0.16"
+iced = { version="0.3", features=["glow", "glow_default_system_font", "tokio"] }
+iced_native = "0.4"
 
