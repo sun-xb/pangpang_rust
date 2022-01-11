@@ -8,6 +8,12 @@ edition = "2021"
 [dependencies]
 env_logger = "0.9"
 pangpang = { path="../pangpang" }
-iced = { version="0.3", features=["glow", "glow_default_system_font", "tokio"] }
-iced_native = "0.4"
+lazy_static = "1.4"
+static_init = "1.0"
+font-kit = "0.10"
+#iced = { version="0.3", features=["glow", "glow_default_system_font", "tokio"] }
+#iced_native = "0.4"
+iced = { git="https://github.com/iced-rs/iced.git", features=["glow", "glow_default_system_font", "tokio"] }
+iced_native = { git="https://github.com/iced-rs/iced.git" }
+iced_graphics = { git="https://github.com/iced-rs/iced.git" }
 

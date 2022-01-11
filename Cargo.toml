@@ -3,3 +3,4 @@ members = [
 	"pangpang",
 	"pangpang_gui"
 ]
+resolver = "2"

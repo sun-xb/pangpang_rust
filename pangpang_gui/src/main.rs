@@ -1,3 +1,4 @@
+
 use iced::Application;
 
 mod terminal_view;
@@ -11,7 +12,7 @@ fn main() {
 
 struct PpMainWindow;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum PpMessage {
 
 }
@@ -33,16 +34,12 @@ impl Application for PpMainWindow {
 
     fn update(
         &mut self,
-        _message: Self::Message,
-        clipboard: &mut iced::Clipboard,
+        _message: Self::Message
     ) -> iced::Command<Self::Message> {
-        if let Some(s) = clipboard.read() {
-            println!("clipboard data: {}", s);
-        }
         iced::Command::none()
     }
 
     fn view(&mut self) -> iced::Element<'_, Self::Message> {
-        iced::Text::new("Hello, world!").into()
+        terminal_view::TerminalView::new().into()
     }
 }
