@@ -28,7 +28,7 @@ pub struct PangPang {
 }
 
 impl PangPang {
-    fn new(cfg: Arc<Mutex<dyn storage::Storage>>) -> Self {
+    pub fn new(cfg: Arc<Mutex<dyn storage::Storage>>) -> Self {
         Self {
             mgr: session::PpSessionManager::new(cfg),
         }
