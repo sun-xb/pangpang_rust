@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use crate::{profile::{Profile, Protocol}, errors, session::ssh};
+use crate::{profile::{Profile, Protocol}, session::ssh, errors};
+
+use super::Storage;
 
 
 
-pub trait Storage: Send + Sync {
-    fn get(&self, id: &String) -> Result<Profile, errors::Error>;
-    fn iter(&self) -> Box<dyn Iterator<Item = (&String, &Profile)> + '_>;
-}
+
 
 pub struct MockStorage {
     map: HashMap<String, Profile>,
@@ -37,23 +36,35 @@ impl Default for MockStorage {
             }),
         };
 
-        s.map.insert(profile_1.id(), profile_1);
-        s.map.insert(profile_2.id(), profile_2);
+        s.put(profile_1).unwrap();
+        s.put(profile_2).unwrap();
         
         s
     }
 }
 
 impl Storage for MockStorage {
-    fn get(&self, id: &String) -> Result<Profile, errors::Error> {
-        if let Some(p) = self.map.get(id) {
-            Ok(p.clone())
-        } else {
-            Err(errors::Error::ProfileNotFound(id.to_owned()))
-        }
+    fn get(&self, id: &String) -> Result<&Profile, errors::Error> {
+        self.map.get(id).ok_or(errors::Error::ProfileNotFound(id.to_owned()))
     }
 
-    fn iter(&self) -> Box<dyn Iterator<Item = (&String, &Profile)> + '_> {
-        Box::new(self.map.iter())
+    fn put(&mut self, profile: Profile) -> Result<(), errors::Error>{
+        let id = profile.id();
+        self.map.insert(id, profile);
+        Ok(())
     }
+
+    fn remove(&mut self, id: &String) -> Result<Profile, errors::Error> {
+        self.map.remove(id).ok_or(errors::Error::ProfileNotFound(id.to_string()))
+    }
+
+    fn flush(&self) -> Result<(), crate::errors::Error> {
+        Ok(())
+    }
+
+    fn iter(&self) -> Box<dyn Iterator<Item = &Profile> + '_> {
+        Box::new(self.map.values())
+    }
+
 }
+

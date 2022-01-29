@@ -72,7 +72,7 @@ impl PpSessionManager {
     }
 
     pub async fn open_session(&self, id: &String) -> Result<PpSessionGuard, errors::Error> {
-        let cfg = self.config.lock().await.get(id)?;
+        let cfg = self.config.lock().await.get(id)?.clone();
         if cfg.capacity().contains(profile::Capacity::SESSION_CACHE) {
             self.open_session_from_cache(id).await
         } else {
@@ -131,7 +131,7 @@ impl PpSessionManager {
 
     #[async_recursion::async_recursion]
     async fn alloc_session(&self, id: &String) -> Result<Arc<dyn PpSession>, errors::Error> {
-        let prof = self.config.lock().await.get(id)?;
+        let prof = self.config.lock().await.get(id)?.clone();
         let mut transport_session: Option<PpSessionGuard> = None;
         if let Some(id) = prof.transport {
             transport_session = Some(self.open_session(&id).await?);
