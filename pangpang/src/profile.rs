@@ -1,49 +1,46 @@
-use crate::session::ssh;
+use serde::{Deserialize, Serialize};
+
+use crate::session::{ssh, socks, telnet};
 
 
 
 
 bitflags::bitflags! {
     pub struct Capacity: u32 {
-        const SESSION_CACHE = 0b0000_0000_0000_0000_0001;
-        const OPEN_PTY = 0b0000_0000_0000_0000_0010;
-        const OPEN_TUNNEL   = 0b0000_0000_0000_0000_0100;
+        const SESSION_CACHE                 = 0b0000_0000_0000_0000_0001;
+        const TERMINAL                      = 0b0000_0000_0000_0000_0010;
+        const LOCAL_TUNNEL                  = 0b0000_0000_0000_0000_0100;
+        const REMOTE_TUNNEL                 = 0b0000_0000_0000_0000_1000;
     }
-}
-pub enum Protocol {
-    Ssh(ssh::SshProfile),
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+pub enum Protocol {
+    Ssh(ssh::Profile),
+    Socks(socks::Profile),
+    Telnet(telnet::Profile),
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Profile {
-    pub username: String,
-    pub address: String,
-    pub port: u16,
     pub transport: Option<String>,
     pub protocol: Protocol,
-}
-impl Clone for Profile {
-    fn clone(&self) -> Self {
-        Self {
-            username: self.username.clone(),
-            address: self.address.clone(), 
-            port: self.port.clone(), 
-            transport: self.transport.clone(), 
-            protocol: match self.protocol {
-                Protocol::Ssh(ref cfg) => Protocol::Ssh(cfg.clone()),
-            }
-        }
-    }
 }
 
 impl Profile {
     pub fn id(&self) -> String {
-        format!("{}@{}:{}", self.username, self.address, self.port)
+        match &self.protocol {
+            Protocol::Ssh(profile) => format!("ssh://{}@{}:{}", profile.username, profile.address, profile.port),
+            Protocol::Socks(profile) => format!("socks://{}:{}", profile.address, profile.port),
+            Protocol::Telnet(_) => todo!(),
+        }
     }
     pub fn capacity(&self) -> Capacity {
         match self.protocol {
             Protocol::Ssh(_) => Capacity::all(),
+            Protocol::Socks(_) => Capacity::LOCAL_TUNNEL,
+            Protocol::Telnet(_) => Capacity::TERMINAL,
         }
     }
 }
-
 

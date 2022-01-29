@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use alacritty_terminal::{ansi::Processor, config::MockConfig, term::SizeInfo, Term, grid};
-use clipboard::ClipboardProvider;
+//use clipboard::ClipboardProvider;
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, sync::Mutex};
 
 use crate::{session::PpPty, errors};
@@ -19,7 +19,7 @@ pub struct Terminal {
     ui_render: Arc<Mutex<dyn Render>>,
     term: AlacrittyTerminal,
     processor: Processor,
-    clipboard: clipboard::ClipboardContext,
+    //clipboard: clipboard::ClipboardContext,
 }
 
 
@@ -31,7 +31,7 @@ impl Terminal {
             pty, input, ui_render,
             term: AlacrittyTerminal::new(&cfg, size, TerminalEventListener),
             processor: Processor::new(),
-            clipboard: clipboard::ClipboardProvider::new().unwrap(),
+            //clipboard: clipboard::ClipboardProvider::new().unwrap(),
         }
     }
 
@@ -119,8 +119,8 @@ impl Terminal {
                 }
                 Ok(())
             }
-            PpTerminalMessage::Copy(line, colune) => {
-                let mut copyed = false;
+            PpTerminalMessage::Copy(_line, _colune) => {
+                /*let mut copyed = false;
                 if let Some(s) = &self.term.selection {
                     if let Some(sr) = s.to_range(&self.term) {
                         if sr.contains(
@@ -150,7 +150,7 @@ impl Terminal {
                     self.term.selection = None;
                     self.term.scroll_display(grid::Scroll::Bottom);
                 }
-                self.ui_render.lock().await.draw(self.term.renderable_content());
+                self.ui_render.lock().await.draw(self.term.renderable_content());*/
                 Ok(())
             }
         }

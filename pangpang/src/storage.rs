@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{profile::{Profile, Protocol}, errors, session::ssh::SshProfile};
+use crate::{profile::{Profile, Protocol}, errors, session::ssh};
 
 
 
@@ -12,28 +12,28 @@ pub trait Storage: Send + Sync {
 pub struct MockStorage {
     map: HashMap<String, Profile>,
 }
-impl MockStorage {
-    pub fn new() -> Self {
+impl Default for MockStorage {
+    fn default() -> Self {
         let mut s = Self {
             map: HashMap::new(),
         };
 
         let profile_1 = Profile {
-            username: "root".to_string(),
-            address: "localhost".to_string(),
-            port: 22,
             transport: None,
-            protocol: Protocol::Ssh(SshProfile{
+            protocol: Protocol::Ssh(ssh::Profile{
                 password: "123456".to_string(),
+                username: "root".to_string(),
+                address: "localhost".to_string(),
+                port: 22,
             }),
         };
         let profile_2 = Profile {
-            username: "root".to_string(),
-            address: "localhost".to_string(),
-            port: 8022,
             transport: Some(profile_1.id()),
-            protocol: Protocol::Ssh(SshProfile{
+            protocol: Protocol::Ssh(ssh::Profile{
                 password: "123456".to_string(),
+                username: "root".to_string(),
+                address: "localhost".to_string(),
+                port: 8022,
             }),
         };
 

@@ -7,14 +7,14 @@ use super::{PpSession, SessionCacheType};
 pub struct PpSessionGuard {
     inner: Arc<dyn PpSession>,
     id: Option<String>,
-    cache: Arc<Mutex<SessionCacheType>>,
+    cache: Option<Arc<Mutex<SessionCacheType>>>,
 }
 
 impl PpSessionGuard {
     pub fn new(
         inner: Arc<dyn PpSession>,
         id: Option<String>,
-        cache: Arc<Mutex<SessionCacheType>>,
+        cache: Option<Arc<Mutex<SessionCacheType>>>,
     ) -> Self {
         Self { inner, id, cache }
     }
@@ -24,18 +24,15 @@ impl Drop for PpSessionGuard {
     fn drop(&mut self) {
         log::info!("pangpang session droped: {:?}", self.id);
         if let Some(id) = &self.id {
-            let cache = self.cache.clone();
+            let cache = self.cache.as_ref().expect("shouldn't panic while id is not none").clone();
             let session_id = id.clone();
             tokio::spawn(async move {
                 let mut cache = cache.lock().await;
-                if let Some((counter, _)) = cache.get_mut(&session_id) {
-                    *counter -= 1;
-                    if 0 == *counter {
-                        cache.remove(&session_id);
-                        log::info!("pangpang session removed from cache: {}", session_id);
-                    }
-                } else {
-                    unreachable!("session must be cached")
+                let (counter, _) = cache.get_mut(&session_id).expect("session must be cached");
+                *counter -= 1;
+                if 0 == *counter {
+                    cache.remove(&session_id);
+                    log::info!("pangpang session removed from cache: {}", session_id);
                 }
             });
         }

@@ -11,17 +11,19 @@ use tokio::sync::Notify;
 use crate::errors;
 use crate::profile;
 
-pub mod ssh;
-mod session_guard;
-mod tunnel_guard;
 mod pty_guard;
-mod session_allocate;
+mod session_guard;
+pub mod socks;
+pub mod ssh;
+pub mod telnet;
+mod tunnel_guard;
+pub use pty_guard::PpPtyGuard;
 pub use session_guard::PpSessionGuard;
 pub use tunnel_guard::PpTunnelGuard;
-pub use pty_guard::PpPtyGuard;
 
 pub trait PpStream: AsyncRead + AsyncWrite + Send + Sync + Unpin {}
 impl<T: AsyncRead + AsyncWrite + Send + Sync + Unpin> PpStream for T {}
+
 #[async_trait]
 pub trait PpPty: PpStream {
     async fn resize(&mut self, width: usize, height: usize) -> Result<(), errors::Error>;
@@ -30,15 +32,30 @@ pub trait PpPty: PpStream {
 type SessionCacheType = HashMap<String, (usize, Arc<dyn PpSession>)>;
 #[async_trait]
 pub trait PpSession: Send + Sync + Unpin {
-    async fn open_tunnel(
+    async fn open_pty(&self) -> Result<Box<dyn PpPty>, errors::Error> {
+        unreachable!()
+    }
+    async fn local_tunnel(
         &self,
-        host: &String,
-        port: u16,
-    ) -> Result<Box<dyn PpStream>, errors::Error>;
-    async fn open_pty(&self) -> Result<Box<dyn PpPty>, errors::Error>;
-    async fn open_port_forward(&self);
+        _host: &String,
+        _port: u16,
+    ) -> Result<Box<dyn PpStream>, errors::Error> {
+        unreachable!()
+    }
+    async fn remote_tunnel(&self, _host: &String, _port: u16) {
+        unreachable!()
+    }
 }
 
+#[async_trait]
+pub trait PpSessionBuilder {
+    async fn build(
+        &self,
+        transport: Option<PpSessionGuard>,
+    ) -> Result<Arc<dyn PpSession>, errors::Error>;
+}
+
+#[derive(Clone)]
 pub struct PpSessionManager {
     config: Arc<Mutex<dyn crate::storage::Storage>>,
     session_cache: Arc<Mutex<SessionCacheType>>,
@@ -59,14 +76,12 @@ impl PpSessionManager {
         if cfg.capacity().contains(profile::Capacity::SESSION_CACHE) {
             self.open_session_from_cache(id).await
         } else {
-            Ok(PpSessionGuard::new(self.alloc_session(id).await?, None, self.session_cache.clone()))
+            Ok(PpSessionGuard::new(
+                self.alloc_session(id).await?,
+                None,
+                None,
+            ))
         }
-    }
-
-    #[async_recursion::async_recursion]
-    pub async fn open_tunnel(&self, id: &String, host: &String, port: u16) -> Result<PpTunnelGuard, errors::Error> {
-        let s = self.open_session(id).await?;
-        Ok(PpTunnelGuard::new(s.open_tunnel(host, port).await?, s))
     }
 
     pub async fn open_pty(&self, id: &String) -> Result<PpPtyGuard, errors::Error> {
@@ -79,8 +94,12 @@ impl PpSessionManager {
         loop {
             if let Some((counter, s)) = self.session_cache.lock().await.get_mut(id) {
                 *counter += 1;
-                log::info!("open session from cache id: {}, ref: {}", id, counter);
-                return Ok(PpSessionGuard::new(s.clone(), Some(id.to_owned()), self.session_cache.clone()));
+                log::info!("open session from cache, id: {}, ref: {}", id, counter);
+                return Ok(PpSessionGuard::new(
+                    s.clone(),
+                    Some(id.to_owned()),
+                    Some(self.session_cache.clone()),
+                ));
             }
             let mut connecting = self.connecting_map.lock().await;
             match connecting.get(id) {
@@ -100,7 +119,11 @@ impl PpSessionManager {
                         .insert(id.to_owned(), (1, s.clone()));
                     self.connecting_map.lock().await.remove(id).unwrap();
                     notify.notify_waiters();
-                    return Ok(PpSessionGuard::new(s, Some(id.to_owned()), self.session_cache.clone()));
+                    return Ok(PpSessionGuard::new(
+                        s,
+                        Some(id.to_owned()),
+                        Some(self.session_cache.clone()),
+                    ));
                 }
             };
         }
@@ -109,26 +132,14 @@ impl PpSessionManager {
     #[async_recursion::async_recursion]
     async fn alloc_session(&self, id: &String) -> Result<Arc<dyn PpSession>, errors::Error> {
         let prof = self.config.lock().await.get(id)?;
-        let alloc = session_allocate::Allocator;
+        let mut transport_session: Option<PpSessionGuard> = None;
+        if let Some(id) = prof.transport {
+            transport_session = Some(self.open_session(&id).await?);
+        }
         match prof.protocol {
-            profile::Protocol::Ssh(cfg) => {
-                alloc.ssh_alloc(self, &prof.address, prof.port, &prof.username, prof.transport, cfg).await
-            }
+            profile::Protocol::Ssh(builder) => builder.build(transport_session).await,
+            profile::Protocol::Socks(builder) => builder.build(transport_session).await,
+            profile::Protocol::Telnet(builder) => builder.build(transport_session).await,
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
