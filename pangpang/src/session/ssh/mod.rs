@@ -75,6 +75,10 @@ impl PpSession for Session {
     async fn remote_tunnel(&self, _host: &String, _port: u16) {
         unimplemented!()
     }
+
+    async fn is_closed(&self) -> bool {
+        self.s.lock().await.is_closed()
+    }
 }
 
 

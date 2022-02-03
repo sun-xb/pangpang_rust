@@ -45,6 +45,9 @@ pub trait PpSession: Send + Sync + Unpin {
     async fn remote_tunnel(&self, _host: &String, _port: u16) {
         unreachable!()
     }
+    async fn is_closed(&self) -> bool {
+        unreachable!()
+    }
 }
 
 #[async_trait]
@@ -93,13 +96,15 @@ impl PpSessionManager {
     async fn open_session_from_cache(&self, id: &String) -> Result<PpSessionGuard, errors::Error> {
         loop {
             if let Some((counter, s)) = self.session_cache.lock().await.get_mut(id) {
-                *counter += 1;
-                log::info!("open session from cache, id: {}, ref: {}", id, counter);
-                return Ok(PpSessionGuard::new(
-                    s.clone(),
-                    Some(id.to_owned()),
-                    Some(self.session_cache.clone()),
-                ));
+                if !s.is_closed().await {
+                    *counter += 1;
+                    log::info!("open session from cache, id: {}, ref: {}", id, counter);
+                    return Ok(PpSessionGuard::new(
+                        s.clone(),
+                        Some(id.to_owned()),
+                        Some(self.session_cache.clone()),
+                    ));
+                }
             }
             let mut connecting = self.connecting_map.lock().await;
             match connecting.get(id) {
@@ -112,15 +117,18 @@ impl PpSessionManager {
                     let notify = Arc::new(Notify::new());
                     connecting.insert(id.to_owned(), notify.clone());
                     drop(connecting);
-                    let s = self.alloc_session(id).await?;
-                    self.session_cache
-                        .lock()
-                        .await
-                        .insert(id.to_owned(), (1, s.clone()));
+                    let session = self.alloc_session(id).await;
+                    if let Ok(ref s) = session {
+                        if let Some((prev_counter, _)) = self.session_cache.lock().await.insert(id.to_owned(), (1, s.clone())) {
+                            let mut cache = self.session_cache.lock().await;
+                            let (counter, _) = cache.get_mut(id).unwrap();
+                            *counter = prev_counter + *counter;
+                        }
+                    }
                     self.connecting_map.lock().await.remove(id).unwrap();
                     notify.notify_waiters();
                     return Ok(PpSessionGuard::new(
-                        s,
+                        session?,
                         Some(id.to_owned()),
                         Some(self.session_cache.clone()),
                     ));
