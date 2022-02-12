@@ -35,8 +35,7 @@ impl AsyncWrite for SshTunnelStream {
         match Box::pin(self.get_mut().channel.data(buf)).as_mut().poll(cx) {
             std::task::Poll::Ready(Ok(_)) => std::task::Poll::Ready(Ok(buf.len())),
             std::task::Poll::Ready(Err(e)) => {
-                let err = crate::errors::Error::PpStreamError(e.to_string());
-                std::task::Poll::Ready(Err(err.into()))
+                std::task::Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, e.to_string())))
             }
             std::task::Poll::Pending => std::task::Poll::Pending,
         }
@@ -56,8 +55,7 @@ impl AsyncWrite for SshTunnelStream {
         match Box::pin(self.get_mut().channel.eof()).as_mut().poll(cx) {
             std::task::Poll::Ready(Ok(_)) => std::task::Poll::Ready(Ok(())),
             std::task::Poll::Ready(Err(e)) => {
-                let err = crate::errors::Error::PpStreamError(e.to_string());
-                std::task::Poll::Ready(Err(err.into()))
+                std::task::Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, e.to_string())))
             }
             std::task::Poll::Pending => std::task::Poll::Pending,
         }

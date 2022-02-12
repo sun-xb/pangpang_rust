@@ -40,9 +40,10 @@ impl PangPang {
     }
 
     pub async fn local_http_proxy(&self, id: &String, addr: &String, port: u16) -> Result<forward::HttpProxy, errors::Error> {
-        let session = self.mgr.open_session(id).await.unwrap();
+        use std::net::ToSocketAddrs;
+        let session = self.mgr.open_session(id).await?;
         let session = Arc::new(session);
-        let server = forward::HttpProxy::new(format!("{}:{}", addr, port), session).await;
+        let server = forward::HttpProxy::new((addr.as_str(), port).to_socket_addrs().unwrap().next().unwrap(), session);
         Ok(server)
     }
 }

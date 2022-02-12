@@ -11,8 +11,18 @@ pub enum Error {
     WritePtyError(String),
     ReadPtyError(String),
     ProfileNotFound(String),
+    UrlParseError(String),
+    HttpProxyConnectionLost,
+    HttpProxyServerError(String),
+    HttpProxyRequestError(String)
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+impl std::error::Error for Error {}
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
@@ -26,8 +36,3 @@ impl From<thrussh::Error> for Error {
     }
 }
 
-impl Into<std::io::Error> for Error {
-    fn into(self) -> std::io::Error {
-        std::io::ErrorKind::Other.into()
-    }
-}

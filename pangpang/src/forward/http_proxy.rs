@@ -1,4 +1,5 @@
-use crate::session::{PpSessionGuard, PpStream};
+
+use crate::{session::{PpSessionGuard, PpStream}, errors};
 
 
 
@@ -6,15 +7,14 @@ use crate::session::{PpSessionGuard, PpStream};
 
 pub struct HttpProxy {
     notify: std::sync::Arc<tokio::sync::Notify>,
-    server: std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), hyper::Error>>>>,
+    server: std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), errors::Error>>>>,
 }
 
 
 impl HttpProxy {
-    pub async fn new(addr: String, transport: std::sync::Arc<PpSessionGuard>) -> Self {
+    pub fn new(addr: std::net::SocketAddr, transport: std::sync::Arc<PpSessionGuard>) -> Self {
         let notify = std::sync::Arc::new(tokio::sync::Notify::default());
         let shutdown = notify.clone();
-        let addr = addr.parse().unwrap();
         
         let svr = async move {
             let http_client = hyper::Client::builder().build::<_, hyper::Body>(HttpConnector{ transport: transport.clone() });
@@ -24,10 +24,10 @@ impl HttpProxy {
                 let svc = hyper::service::service_fn(move |r: hyper::Request<hyper::Body>| {
                     Self::forward(r, client.clone(), ts.clone())
                 });
-                std::future::ready(Ok::<_, hyper::Error>(svc))
+                std::future::ready(Ok::<_, errors::Error>(svc))
             });
             let server = hyper::Server::bind(&addr).serve(make_svc);
-            server.with_graceful_shutdown(shutdown.notified()).await
+            server.with_graceful_shutdown(shutdown.notified()).await.map_err(|e| errors::Error::HttpProxyServerError(e.to_string()))
         };
         Self {
             notify: notify,
@@ -35,32 +35,42 @@ impl HttpProxy {
         }
     }
 
-    pub async fn run(&mut self) {
-        self.server.as_mut().await.unwrap();
+    pub async fn run(&mut self) -> Result<(), errors::Error> {
+        self.server.as_mut().await
     }
 
     pub fn shutdown(&self) {
         self.notify.notify_one();
     }
 
-    async fn forward(req: hyper::Request<hyper::Body>, client: hyper::Client<HttpConnector>, ts: std::sync::Arc<PpSessionGuard>) -> Result<hyper::Response<hyper::Body>, hyper::Error> {
+    async fn forward(req: hyper::Request<hyper::Body>, client: hyper::Client<HttpConnector>, ts: std::sync::Arc<PpSessionGuard>) -> Result<hyper::Response<hyper::Body>, errors::Error> {
+        if ts.is_closed().await {
+            log::error!("http proxy server connection lost!");
+            return Err(errors::Error::HttpProxyConnectionLost)
+        }
         if hyper::Method::CONNECT != req.method() {
-            return client.request(req).await
+            return client.request(req).await.map_err(|e| errors::Error::HttpProxyRequestError(e.to_string()))
         }
         tokio::spawn(async move {
-            let host = req.uri().host().unwrap();
-            let host = host.to_string();
-            let port = req.uri().port().unwrap();
-            let port = port.as_u16();
-            match hyper::upgrade::on(req).await {
-                Ok(mut upgraded) => {
-                    let mut conn = ts.local_tunnel(&host, port).await.unwrap();
-                    if let Err(_e) = tokio::io::copy_bidirectional(&mut upgraded, &mut conn).await {
-                        
-                    }
-                }
-                Err(e) => panic!("{}", e)
+            let host = req.uri().host();
+            if host.is_none() {
+                log::error!("http forward got unknown host: {}", req.uri().to_string());
+                return;
             }
+            let host = host.unwrap().to_string();
+            let port = req.uri().port().map_or(443, |p| p.as_u16());
+
+            let upgraded = hyper::upgrade::on(req).await;
+            if let Err(e) = upgraded {
+                log::error!("http forward upgrade failed: {}", e.to_string());
+                return;
+            }
+            let conn = ts.local_tunnel(&host, port).await;
+            if let Err(e) = conn {
+                log::error!("http forward connection lost: {}", e.to_string());
+                return;
+            }
+            tokio::io::copy_bidirectional(&mut upgraded.unwrap(), &mut conn.unwrap()).await.unwrap_or_default();
         });
         Ok(hyper::Response::new(hyper::Body::empty()))
     }
@@ -75,7 +85,7 @@ struct HttpConnector {
 impl hyper::service::Service<hyper::Uri> for HttpConnector {
     type Response = HttpStream;
 
-    type Error = hyper::Error;
+    type Error = errors::Error;
 
     type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -86,19 +96,21 @@ impl hyper::service::Service<hyper::Uri> for HttpConnector {
     fn call(&mut self, req: hyper::Uri) -> Self::Future {
         let s = self.transport.clone();
         let f = async move {
-            let host = req.host().unwrap();
+            let host = req.host().ok_or(errors::Error::UrlParseError(req.to_string()))?;
             let port = *req.port_u16().get_or_insert_with(|| {
                 match req.scheme_str() {
                     Some("https") => 443,
                     _ => 80
                 }
             });
-            let stream = s.local_tunnel(&host.to_string(), port).await.unwrap();
+            let stream = s.local_tunnel(&host.to_string(), port).await?;
             Ok(HttpStream{ stream })
         };
         Box::pin(f)
     }
 }
+
+
 
 struct HttpStream {
     stream: Box<dyn PpStream>
