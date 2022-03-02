@@ -1,134 +1,47 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::usize;
+use crate::profile::Protocol;
 
-use async_trait::async_trait;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncWrite;
-use tokio::sync::Mutex;
-use tokio::sync::Notify;
 
-use crate::errors;
-use crate::profile;
 
-pub mod ssh;
-mod session_guard;
-mod tunnel_guard;
-mod pty_guard;
-mod session_allocate;
-pub use session_guard::PpSessionGuard;
-pub use tunnel_guard::PpTunnelGuard;
-pub use pty_guard::PpPtyGuard;
+mod local;
+mod ssh;
 
-pub trait PpStream: AsyncRead + AsyncWrite + Send + Sync + Unpin {}
-impl<T: AsyncRead + AsyncWrite + Send + Sync + Unpin> PpStream for T {}
-#[async_trait]
-pub trait PpPty: PpStream {
-    async fn resize(&mut self, width: usize, height: usize) -> Result<(), errors::Error>;
+
+pub trait AsyncStream: tokio::io::AsyncRead + tokio::io::AsyncWrite {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite> AsyncStream for T {}
+
+
+#[async_trait::async_trait]
+pub trait Session: Send + Sync {
+    async fn open_shell(&self) -> anyhow::Result<()>;
+    async fn direct_tcpip(&self, addr: &str, port: u16) -> anyhow::Result<Box<dyn AsyncStream>>;
+    async fn forward_listen(&self) -> anyhow::Result<()>;
 }
 
-type SessionCacheType = HashMap<String, (usize, Arc<dyn PpSession>)>;
-#[async_trait]
-pub trait PpSession: Send + Sync + Unpin {
-    async fn open_tunnel(
-        &self,
-        host: &String,
-        port: u16,
-    ) -> Result<Box<dyn PpStream>, errors::Error>;
-    async fn open_pty(&self) -> Result<Box<dyn PpPty>, errors::Error>;
-    async fn open_port_forward(&self);
+
+
+pub struct Builder<S: crate::storage::Storage> {
+    storage: S
 }
 
-pub struct PpSessionManager {
-    config: Arc<Mutex<dyn crate::storage::Storage>>,
-    session_cache: Arc<Mutex<SessionCacheType>>,
-    connecting_map: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
-}
-
-impl PpSessionManager {
-    pub fn new(config: Arc<Mutex<dyn crate::storage::Storage>>) -> Self {
+impl<S: crate::storage::Storage> Builder<S> {
+    pub fn new(storage: S) -> Self {
         Self {
-            config,
-            session_cache: Arc::new(Mutex::new(SessionCacheType::new())),
-            connecting_map: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    pub async fn open_session(&self, id: &String) -> Result<PpSessionGuard, errors::Error> {
-        let cfg = self.config.lock().await.get(id)?;
-        if cfg.capacity().contains(profile::Capacity::SESSION_CACHE) {
-            self.open_session_from_cache(id).await
-        } else {
-            Ok(PpSessionGuard::new(self.alloc_session(id).await?, None, self.session_cache.clone()))
+            storage
         }
     }
 
     #[async_recursion::async_recursion]
-    pub async fn open_tunnel(&self, id: &String, host: &String, port: u16) -> Result<PpTunnelGuard, errors::Error> {
-        let s = self.open_session(id).await?;
-        Ok(PpTunnelGuard::new(s.open_tunnel(host, port).await?, s))
-    }
+    pub async fn open_session(&self, id: &String) -> anyhow::Result<Box<dyn Session>> {
+        let profile = self.storage.get(id).await?;
+        let transport = match profile.transport {
+            None => Box::new(local::LocalSession),
+            Some(ref id) => self.open_session(id).await?
+        };
+        let s = match profile.protocol {
+            Protocol::SSH(ref ssh) => ssh::SshSession::new(ssh, transport)
+        };
 
-    pub async fn open_pty(&self, id: &String) -> Result<PpPtyGuard, errors::Error> {
-        let s = self.open_session(id).await?;
-        Ok(PpPtyGuard::new(s.open_pty().await?, s))
-    }
-
-    #[async_recursion::async_recursion]
-    async fn open_session_from_cache(&self, id: &String) -> Result<PpSessionGuard, errors::Error> {
-        loop {
-            if let Some((counter, s)) = self.session_cache.lock().await.get_mut(id) {
-                *counter += 1;
-                log::info!("open session from cache id: {}, ref: {}", id, counter);
-                return Ok(PpSessionGuard::new(s.clone(), Some(id.to_owned()), self.session_cache.clone()));
-            }
-            let mut connecting = self.connecting_map.lock().await;
-            match connecting.get(id) {
-                Some(notify) => {
-                    let n = notify.clone();
-                    drop(connecting);
-                    n.notified().await;
-                }
-                None => {
-                    let notify = Arc::new(Notify::new());
-                    connecting.insert(id.to_owned(), notify.clone());
-                    drop(connecting);
-                    let s = self.alloc_session(id).await?;
-                    self.session_cache
-                        .lock()
-                        .await
-                        .insert(id.to_owned(), (1, s.clone()));
-                    self.connecting_map.lock().await.remove(id).unwrap();
-                    notify.notify_waiters();
-                    return Ok(PpSessionGuard::new(s, Some(id.to_owned()), self.session_cache.clone()));
-                }
-            };
-        }
-    }
-
-    #[async_recursion::async_recursion]
-    async fn alloc_session(&self, id: &String) -> Result<Arc<dyn PpSession>, errors::Error> {
-        let prof = self.config.lock().await.get(id)?;
-        let alloc = session_allocate::Allocator;
-        match prof.protocol {
-            profile::Protocol::Ssh(cfg) => {
-                alloc.ssh_alloc(self, &prof.address, prof.port, &prof.username, prof.transport, cfg).await
-            }
-        }
+        Ok(Box::new(s) as Box<dyn Session>)
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
