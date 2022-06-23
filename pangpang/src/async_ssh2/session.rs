@@ -17,8 +17,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub async fn new<A: tokio::net::ToSocketAddrs>(addr: A) -> Result<Self, Error> {
-        let stream = tokio::net::TcpStream::connect(addr).await?;
+    pub async fn new(stream: tokio::net::TcpStream) -> Result<Self, Error> {
         let stream = Arc::new(stream);
         let mut inner = ssh2::Session::new()?;
         #[cfg(windows)]
@@ -29,8 +28,31 @@ impl Session {
         inner.set_blocking(false);
         Ok(Self{
             stream,
-            inner
+            inner,
         })
+    }
+
+    pub async fn new_with_channel(ch: Channel) -> Result<Self, Error> {
+        let listerner = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let local_addr = listerner.local_addr()?;
+        let (s1, s2) = loop {
+            let joined = tokio::join!(listerner.accept(), tokio::net::TcpStream::connect(local_addr));
+            let incomming = joined.0?;
+            let client = joined.1?;
+            if client.local_addr()? != incomming.1 {
+                continue;
+            }
+            break (incomming.0, client);
+        };
+        let _join_handle = tokio::spawn(async move {
+            let mut channel = ch;
+            let mut socket = s1;
+            if let Err(e) = tokio::io::copy_bidirectional(&mut channel, &mut socket).await {
+                log::warn!("jump host copy stream error: {}", e);
+            }
+            log::info!("jump host stream exit");
+        });
+        Self::new(s2).await
     }
 
     pub async fn handshake(&mut self) -> Result<(), Error> {

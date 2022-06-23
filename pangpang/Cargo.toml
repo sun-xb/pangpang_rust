@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 log = "0.4"
 anyhow = "1"
-tokio = { version = "1.17", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 async-recursion = "1"
 ssh2 = "0.9"

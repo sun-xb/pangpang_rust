@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 env_logger = "0.9"
-pangpang = { path="../pangpang" }
-tokio = { version = "1.17", features = ["full"] }
+#sciter-rs = "0.5"
+#gtk = { version = "0.4", package = "gtk4" }
+pp = { path="../pangpang", package = "pangpang" }
+tokio = { version = "1", features = ["full"] }
